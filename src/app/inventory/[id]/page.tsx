@@ -59,12 +59,25 @@ export default async function InventoryDetailPage({
     label: img.is_primary ? "Primary" : img.type || "Alternate view",
   }));
 
+  const formatDimensions = () => {
+    const parts: string[] = [];
+    if (item.height != null) parts.push(`H: ${item.height} cm`);
+    if (item.width != null) parts.push(`W: ${item.width} cm`);
+    if (item.depth != null) parts.push(`D: ${item.depth} cm`);
+    return parts.length > 0 ? parts.join(" × ") : null;
+  };
+
   const details = [
+    { label: "ID", value: String(item.id) },
     { label: "Catalog #", value: item.catalog_number },
     { label: "Year", value: item.year },
     { label: "Medium", value: item.medium },
     { label: "Dimensions", value: item.dimensions },
+    { label: "Dimensions (cm)", value: formatDimensions() },
     { label: "Edition", value: item.edition },
+    { label: "Price", value: formatPrice(item.price, item.price_currency) },
+    { label: "Currency", value: item.price_currency },
+    { label: "Status", value: item.status },
     { label: "Type", value: item.type },
     { label: "Created", value: item.created_at ? new Date(item.created_at).toLocaleDateString() : null },
     { label: "Updated", value: item.updated_at ? new Date(item.updated_at).toLocaleDateString() : null },
@@ -120,32 +133,26 @@ export default async function InventoryDetailPage({
               </p>
             )}
 
-            {item.price !== null && (
-              <p className="text-2xl font-bold text-gray-900 mt-4">
-                {formatPrice(item.price, item.price_currency)}
-              </p>
-            )}
-
             <div className="mt-6 border-t border-gray-200 pt-6">
               <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
-                {details
-                  .filter((d) => d.value)
-                  .map((d) => (
-                    <div key={d.label}>
-                      <dt className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        {d.label}
-                      </dt>
-                      <dd className="mt-1 text-sm text-gray-900">{d.value}</dd>
-                    </div>
-                  ))}
+                {details.map((d) => (
+                  <div key={d.label}>
+                    <dt className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      {d.label}
+                    </dt>
+                    <dd className="mt-1 text-sm text-gray-900">
+                      {d.value || <span className="text-gray-400 italic">—</span>}
+                    </dd>
+                  </div>
+                ))}
               </dl>
             </div>
 
-            {item.artists.length > 0 && (
-              <div className="mt-6 border-t border-gray-200 pt-6">
-                <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
-                  Artists
-                </h3>
+            <div className="mt-6 border-t border-gray-200 pt-6">
+              <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+                Artists
+              </h3>
+              {item.artists.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {item.artists.map((artist) => (
                     <Link
@@ -157,8 +164,10 @@ export default async function InventoryDetailPage({
                     </Link>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="text-sm text-gray-400 italic">—</p>
+              )}
+            </div>
           </div>
         </div>
       </div>

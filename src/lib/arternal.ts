@@ -103,11 +103,12 @@ export interface ArtistDetail {
   last_name: string;
   alias: string | null;
   display_name: string;
-  birth_year: number | null;
-  death_year: number | null;
+  birth_year: string | null;
+  death_year: string | null;
   bio: string | null;
   country: string | null;
   life_dates: string | null;
+  saved: boolean;
   statistics: {
     inventory: Record<string, number>;
     sets: Record<string, number>;
@@ -222,10 +223,72 @@ export interface ContactItem {
   };
 }
 
+export interface ContactTransaction {
+  id: number;
+  title: string;
+  status: string;
+  total_price: string;
+  created_at: string;
+}
+
+export interface ContactActivity {
+  type: string;
+  text: string | null;
+  created_at: string;
+}
+
+export interface ContactDetail {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  phone_mobile: string | null;
+  type: string | null;
+  website: string | null;
+  company: string | null;
+  primary_street: string | null;
+  primary_city: string | null;
+  primary_state: string | null;
+  primary_zip: string | null;
+  primary_country: string | null;
+  display_name: string;
+  primary_address?: {
+    street: string | null;
+    city: string | null;
+    state: string | null;
+    zip: string | null;
+    country: string | null;
+    formatted: string | null;
+  };
+  tags: string[];
+  notes: string[];
+  recent_transactions: ContactTransaction[];
+  recent_activities: ContactActivity[];
+}
+
+export interface ContactDetailResponse {
+  success: boolean;
+  data: ContactDetail;
+}
+
 export interface ContactListResponse {
   success: boolean;
   data: ContactItem[];
   pagination: Pagination;
+}
+
+export async function fetchContact(id: string): Promise<ContactDetailResponse> {
+  const res = await fetch(`${API_BASE}/contacts/${id}`, {
+    headers: { "X-API-Key": API_KEY },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Arternal API error: ${res.status}`);
+  }
+
+  return res.json();
 }
 
 export async function fetchContacts(params: Record<string, string> = {}): Promise<ContactListResponse> {

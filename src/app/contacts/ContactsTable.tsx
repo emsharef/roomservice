@@ -132,7 +132,8 @@ export default function ContactsTable({
             {contacts.map((contact) => (
               <tr
                 key={contact.id}
-                className="hover:bg-gray-50 transition-colors"
+                onClick={() => router.push(`/contacts/${contact.id}`)}
+                className="hover:bg-gray-50 cursor-pointer transition-colors"
               >
                 <td className="px-4 py-3">
                   <div className="text-sm font-medium text-gray-900">{contact.display_name}</div>

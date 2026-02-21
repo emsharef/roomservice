@@ -73,11 +73,22 @@ export default async function ArtistDetailPage({
   }
 
   const details = [
-    { label: "Country", value: artist.country },
+    { label: "ID", value: String(artist.id) },
+    { label: "First Name", value: artist.first_name },
+    { label: "Last Name", value: artist.last_name },
+    { label: "Display Name", value: artist.display_name },
+    { label: "Alias", value: artist.alias },
+    { label: "Birth Year", value: artist.birth_year },
+    { label: "Death Year", value: artist.death_year },
     { label: "Life Dates", value: artist.life_dates },
+    { label: "Country", value: artist.country },
+    { label: "Saved", value: artist.saved ? "Yes" : "No" },
+    { label: "Created", value: artist.created_at ? new Date(artist.created_at).toLocaleDateString() : null },
+    { label: "Updated", value: artist.updated_at ? new Date(artist.updated_at).toLocaleDateString() : null },
   ];
 
-  const inventoryCount = Object.values(artist.statistics?.inventory ?? {}).reduce((a, b) => a + b, 0);
+  const inventoryStats = Object.entries(artist.statistics?.inventory ?? {});
+  const setStats = Object.entries(artist.statistics?.sets ?? {});
 
   return (
     <div>
@@ -91,26 +102,76 @@ export default async function ArtistDetailPage({
         Back to artists
       </Link>
 
-      {/* Artist info card */}
+      <h1 className="text-2xl font-semibold text-gray-900 mb-6">{artist.display_name}</h1>
+
+      {/* Artist details */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900">{artist.display_name}</h1>
-
-        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
-          {details.filter((d) => d.value).map((d) => (
-            <span key={d.label}>
-              <span className="font-medium text-gray-500">{d.label}:</span> {d.value}
-            </span>
+        <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">
+          Artist Information
+        </h2>
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+          {details.map((d) => (
+            <div key={d.label}>
+              <dt className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                {d.label}
+              </dt>
+              <dd className="mt-1 text-sm text-gray-900">
+                {d.value || <span className="text-gray-400 italic">—</span>}
+              </dd>
+            </div>
           ))}
-          {inventoryCount > 0 && (
-            <span>
-              <span className="font-medium text-gray-500">Inventory:</span> {inventoryCount} works
-            </span>
-          )}
-        </div>
+        </dl>
+      </div>
 
-        {artist.bio && (
-          <p className="mt-4 text-sm text-gray-700 leading-relaxed">{artist.bio}</p>
+      {/* Bio */}
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mb-6">
+        <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">
+          Biography
+        </h2>
+        {artist.bio ? (
+          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{artist.bio}</p>
+        ) : (
+          <p className="text-sm text-gray-400 italic">—</p>
         )}
+      </div>
+
+      {/* Statistics */}
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mb-6">
+        <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">
+          Statistics
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div>
+            <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Inventory</h3>
+            {inventoryStats.length > 0 ? (
+              <dl className="space-y-1">
+                {inventoryStats.map(([key, count]) => (
+                  <div key={key} className="flex justify-between text-sm">
+                    <dt className="text-gray-600 capitalize">{key}</dt>
+                    <dd className="text-gray-900 font-medium">{count}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="text-sm text-gray-400 italic">—</p>
+            )}
+          </div>
+          <div>
+            <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Sets</h3>
+            {setStats.length > 0 ? (
+              <dl className="space-y-1">
+                {setStats.map(([key, count]) => (
+                  <div key={key} className="flex justify-between text-sm">
+                    <dt className="text-gray-600 capitalize">{key}</dt>
+                    <dd className="text-gray-900 font-medium">{count}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="text-sm text-gray-400 italic">—</p>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Works heading */}
