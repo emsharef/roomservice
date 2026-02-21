@@ -1,9 +1,9 @@
-import { fetchInventory } from "@/lib/arternal";
-import InventoryTable from "./InventoryTable";
+import { fetchArtists } from "@/lib/arternal";
+import ArtistsTable from "./ArtistsTable";
 
 const ITEMS_PER_PAGE = 20;
 
-export default async function Home({
+export default async function ArtistsPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -11,34 +11,30 @@ export default async function Home({
   const params = await searchParams;
   const page = Math.max(1, parseInt(typeof params.page === "string" ? params.page : "1", 10));
   const search = typeof params.search === "string" ? params.search : "";
-  const status = typeof params.status === "string" ? params.status : "";
 
   const offset = (page - 1) * ITEMS_PER_PAGE;
   const queryParams: Record<string, string> = {
     limit: String(ITEMS_PER_PAGE),
     offset: String(offset),
-    type: "inventory",
   };
   if (search) queryParams.search = search;
-  if (status) queryParams.status = status;
 
   let data;
   let error: string | null = null;
 
   try {
-    data = await fetchInventory(queryParams);
+    data = await fetchArtists(queryParams);
   } catch (e) {
-    error = e instanceof Error ? e.message : "Failed to fetch inventory";
+    error = e instanceof Error ? e.message : "Failed to fetch artists";
   }
 
   return (
     <div>
-      <InventoryTable
-        items={data?.data ?? []}
+      <ArtistsTable
+        artists={data?.data ?? []}
         pagination={data?.pagination ?? null}
         currentPage={page}
         search={search}
-        status={status}
         error={error}
       />
     </div>
