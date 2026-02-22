@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // 5. Generate CLIP embedding via Jina API
+    // 5. Generate embedding via Voyage AI
     const embedding = await generateImageEmbedding(artwork.primary_image_url);
 
     // 6. Store in artworks_extended

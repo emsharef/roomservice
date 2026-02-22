@@ -1,6 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
+import sharp from "sharp";
 
 const anthropic = new Anthropic(); // reads ANTHROPIC_API_KEY from env
+
+/** Max dimension for Claude Vision (it downscales to 1568px internally) */
+const VISION_MAX_SIZE = 1568;
 
 export interface ArtworkAnalysis {
   description: string;
@@ -16,28 +20,20 @@ export async function analyzeArtwork(
   artist: string,
   medium?: string | null
 ): Promise<ArtworkAnalysis> {
-  // Fetch the image and convert to base64
+  // Fetch the image and resize for Claude Vision
   const imageResponse = await fetch(imageUrl);
   if (!imageResponse.ok) {
     throw new Error(`Failed to fetch image: ${imageResponse.status}`);
   }
-  const imageBuffer = await imageResponse.arrayBuffer();
-  const base64 = Buffer.from(imageBuffer).toString("base64");
-  const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
+  const rawBuffer = Buffer.from(await imageResponse.arrayBuffer());
 
-  // Validate media type for Claude Vision
-  const validMediaTypes = [
-    "image/jpeg",
-    "image/png",
-    "image/gif",
-    "image/webp",
-  ] as const;
-  type MediaType = (typeof validMediaTypes)[number];
-  const mediaType: MediaType = validMediaTypes.includes(
-    contentType as MediaType
-  )
-    ? (contentType as MediaType)
-    : "image/jpeg";
+  const resized = await sharp(rawBuffer)
+    .resize(VISION_MAX_SIZE, VISION_MAX_SIZE, { fit: "inside", withoutEnlargement: true })
+    .jpeg({ quality: 90 })
+    .toBuffer();
+
+  const base64 = resized.toString("base64");
+  const mediaType = "image/jpeg" as const;
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",

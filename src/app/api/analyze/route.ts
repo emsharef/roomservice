@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     // Also generate a text embedding of the description for semantic search
     let descriptionEmbedding: number[] | null = null;
     try {
-      if (analysis.description && process.env.JINA_API_KEY) {
+      if (analysis.description && process.env.VOYAGE_API_KEY) {
         descriptionEmbedding = await generateTextEmbedding(
           analysis.description
         );

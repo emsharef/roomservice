@@ -31,7 +31,7 @@ src/
     arternal.ts              # Arternal API client: types, fetch functions, pagination helper
     sync.ts                  # Sync service: full/incremental sync with detail fetching
     vision.ts                # Claude Vision artwork analysis
-    embeddings.ts            # CLIP/Jina embedding service
+    embeddings.ts            # Voyage AI multimodal embedding service
     search.ts                # Semantic + text search logic
     supabase/
       client.ts              # Browser Supabase client
@@ -91,11 +91,11 @@ scripts/
 
 ### Extended Tables (AI enrichment, app-owned)
 
-**artworks_extended** — artwork_id (FK), clip_embedding vector(768), ai_description, style_tags[], color_palette, subject_tags[], mood_tags[], description_embedding vector(768), comparable_sales, price_history, clip_generated_at, vision_analyzed_at, enrichment_status, enrichment_error
+**artworks_extended** — artwork_id (FK), clip_embedding vector(1024), ai_description, style_tags[], color_palette, subject_tags[], mood_tags[], description_embedding vector(1024), comparable_sales, price_history, clip_generated_at, vision_analyzed_at, enrichment_status, enrichment_error
 
 **artists_extended** — artist_id (FK), enrichment_brief, formatted_bio, market_context, related_artist_ids[], enrichment_status, enrichment_error, reviewed_by, reviewed_at, written_back_at
 
-**contacts_extended** — contact_id (FK), taste_embedding vector(768), collector_brief, inferred_preferences, enrichment_status, enrichment_error, reviewed_by, reviewed_at, written_back_at
+**contacts_extended** — contact_id (FK), taste_embedding vector(1024), collector_brief, inferred_preferences, enrichment_status, enrichment_error, reviewed_by, reviewed_at, written_back_at
 
 ### System Tables
 
@@ -194,7 +194,7 @@ NEXT_PUBLIC_SUPABASE_URL  # Supabase project URL
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY  # Public anon key
 SUPABASE_SECRET_KEY       # Service role key (server-side only)
 SUPABASE_DB_URL           # PostgreSQL connection string (for psql)
-JINA_API_KEY              # Jina AI CLIP embeddings
+VOYAGE_API_KEY            # Voyage AI multimodal embeddings
 ANTHROPIC_API_KEY         # Claude Vision & enrichment
 ```
 
