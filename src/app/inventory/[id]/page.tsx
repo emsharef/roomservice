@@ -168,6 +168,18 @@ export default async function InventoryDetailPage({
               </dl>
             </div>
 
+            <div className="mt-6">
+              <Link
+                href={`/search?similar=${item.id}`}
+                className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                Find Similar
+              </Link>
+            </div>
+
             <div className="mt-6 border-t border-gray-200 pt-6">
               <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
                 Artists
