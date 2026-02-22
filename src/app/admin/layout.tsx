@@ -47,6 +47,12 @@ export default async function AdminLayout({
           >
             Sync Dashboard
           </Link>
+          <Link
+            href="/admin/batch"
+            className="text-sm font-medium text-gray-600 hover:text-gray-900"
+          >
+            Batch Processing
+          </Link>
           {role === "admin" && (
             <Link
               href="/admin/users"
