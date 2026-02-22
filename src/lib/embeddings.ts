@@ -22,6 +22,68 @@ async function fetchAndResizeForEmbed(imageUrl: string): Promise<string> {
   return `data:image/jpeg;base64,${resized.toString("base64")}`;
 }
 
+/**
+ * Generate embeddings for multiple images in a single Voyage API call.
+ * Returns an array of { embedding, index } for successful items, plus errors.
+ */
+export async function generateImageEmbeddings(
+  imageUrls: string[]
+): Promise<{ embeddings: (number[] | null)[]; errors: (string | null)[] }> {
+  if (!VOYAGE_API_KEY) {
+    throw new Error("VOYAGE_API_KEY is not set");
+  }
+
+  // Fetch and resize all images concurrently
+  const results = await Promise.allSettled(
+    imageUrls.map((url) => fetchAndResizeForEmbed(url))
+  );
+
+  const inputs: { content: { type: string; image_base64: string }[] }[] = [];
+  const indexMap: number[] = []; // maps Voyage response index to original index
+  const errors: (string | null)[] = new Array(imageUrls.length).fill(null);
+
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    if (result.status === "fulfilled") {
+      inputs.push({ content: [{ type: "image_base64", image_base64: result.value }] });
+      indexMap.push(i);
+    } else {
+      errors[i] = result.reason?.message || "Failed to fetch/resize image";
+    }
+  }
+
+  const embeddings: (number[] | null)[] = new Array(imageUrls.length).fill(null);
+
+  if (inputs.length === 0) {
+    return { embeddings, errors };
+  }
+
+  const response = await fetch("https://api.voyageai.com/v1/multimodalembeddings", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${VOYAGE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "voyage-multimodal-3.5",
+      inputs,
+      input_type: "document",
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Voyage API error ${response.status}: ${text}`);
+  }
+
+  const data = await response.json();
+  for (let i = 0; i < data.data.length; i++) {
+    embeddings[indexMap[i]] = data.data[i].embedding;
+  }
+
+  return { embeddings, errors };
+}
+
 export async function generateImageEmbedding(imageUrl: string): Promise<number[]> {
   if (!VOYAGE_API_KEY) {
     throw new Error("VOYAGE_API_KEY is not set");

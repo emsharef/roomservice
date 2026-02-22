@@ -44,34 +44,59 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
   });
   const pauseRef = useRef(false);
 
+  // Paginated fetch to bypass Supabase PostgREST max_rows (default 1000)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function fetchAllRows(
+    queryFn: (offset: number, limit: number) => Promise<{ data: any[] | null }>,
+    pageSize = 1000,
+  ) {
+    const all: any[] = [];
+    let offset = 0;
+    while (true) {
+      const { data } = await queryFn(offset, pageSize);
+      if (!data || data.length === 0) break;
+      all.push(...data);
+      if (data.length < pageSize) break;
+      offset += pageSize;
+    }
+    return all;
+  }
+
   async function runBatch(type: "embed" | "analyze") {
     pauseRef.current = false;
 
-    // Fetch artworks that have images
-    const { data: artworks } = await supabase
-      .from("artworks")
-      .select("id, title, primary_image_url")
-      .not("primary_image_url", "is", null);
+    // Fetch all artworks that have images (paginated to bypass 1000 row limit)
+    const artworks: { id: number; title: string | null; primary_image_url: string }[] =
+      await fetchAllRows(async (offset, limit) =>
+        await supabase
+          .from("artworks")
+          .select("id, title, primary_image_url")
+          .not("primary_image_url", "is", null)
+          .order("id")
+          .range(offset, offset + limit - 1),
+      );
 
-    if (!artworks || artworks.length === 0) return;
+    if (artworks.length === 0) return;
 
     let toProcess = artworks;
 
     if (mode === "incremental") {
-      // Filter to only unprocessed
-      const column = type === "embed" ? "clip_embedding" : "vision_analyzed_at";
-      const { data: extended } = await supabase
-        .from("artworks_extended")
-        .select("artwork_id, clip_embedding, vision_analyzed_at");
+      // Fetch all extended rows (paginated), using timestamps not embedding vectors
+      const extended: { artwork_id: number; clip_generated_at: string | null; vision_analyzed_at: string | null }[] =
+        await fetchAllRows(async (offset, limit) =>
+          await supabase
+            .from("artworks_extended")
+            .select("artwork_id, clip_generated_at, vision_analyzed_at")
+            .order("artwork_id")
+            .range(offset, offset + limit - 1),
+        );
 
       const processedIds = new Set<number>();
-      if (extended) {
-        for (const row of extended) {
-          if (type === "embed" && row.clip_embedding !== null) {
-            processedIds.add(row.artwork_id);
-          } else if (type === "analyze" && row.vision_analyzed_at !== null) {
-            processedIds.add(row.artwork_id);
-          }
+      for (const row of extended) {
+        if (type === "embed" && row.clip_generated_at !== null) {
+          processedIds.add(row.artwork_id);
+        } else if (type === "analyze" && row.vision_analyzed_at !== null) {
+          processedIds.add(row.artwork_id);
         }
       }
       toProcess = artworks.filter((a) => !processedIds.has(a.id));
@@ -89,52 +114,121 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
       errors: [],
     });
 
-    const endpoint = type === "embed" ? "/api/embed" : "/api/analyze";
+    if (type === "embed") {
+      // Batch embedding: send groups to /api/embed/batch
+      // Paid tier: 2M TPM, ~1K tokens/image → batch of 50
+      const BATCH_SIZE = 50;
+      let processed = 0;
 
-    for (let i = 0; i < toProcess.length; i++) {
-      if (pauseRef.current) break;
+      for (let i = 0; i < toProcess.length; i += BATCH_SIZE) {
+        if (pauseRef.current) break;
 
-      const item = toProcess[i];
-      const title = item.title || `Artwork ${item.id}`;
+        const batch = toProcess.slice(i, i + BATCH_SIZE);
+        const batchIds = batch.map((a) => a.id);
+        const batchTitle = batch.map((a) => a.title || `Artwork ${a.id}`).join(", ");
 
-      setProgress((prev) => ({
-        ...prev,
-        current: i + 1,
-        currentItem: title,
-      }));
+        setProgress((prev) => ({
+          ...prev,
+          current: processed,
+          currentItem: `Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.length} artworks`,
+        }));
 
-      try {
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ artworkId: item.id }),
-        });
+        try {
+          const res = await fetch("/api/embed/batch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ artworkIds: batchIds }),
+          });
 
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({ error: "Unknown error" }));
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({ error: "Unknown error" }));
+            // Mark all items in batch as failed
+            for (const item of batch) {
+              setProgress((prev) => ({
+                ...prev,
+                errors: [
+                  ...prev.errors,
+                  { artworkId: item.id, title: item.title || `Artwork ${item.id}`, error: data.error || `HTTP ${res.status}` },
+                ],
+              }));
+            }
+          } else {
+            const data = await res.json();
+            // Add individual errors from the batch
+            if (data.errors && data.errors.length > 0) {
+              for (const err of data.errors) {
+                const item = batch.find((a) => a.id === err.artworkId);
+                setProgress((prev) => ({
+                  ...prev,
+                  errors: [
+                    ...prev.errors,
+                    { artworkId: err.artworkId, title: item?.title || `Artwork ${err.artworkId}`, error: err.error },
+                  ],
+                }));
+              }
+            }
+          }
+        } catch (e) {
+          for (const item of batch) {
+            setProgress((prev) => ({
+              ...prev,
+              errors: [
+                ...prev.errors,
+                { artworkId: item.id, title: item.title || `Artwork ${item.id}`, error: String(e) },
+              ],
+            }));
+          }
+        }
+
+        processed += batch.length;
+        setProgress((prev) => ({ ...prev, current: processed }));
+
+      }
+    } else {
+      // Vision analysis: still one at a time (Claude doesn't batch)
+      const endpoint = "/api/analyze";
+
+      for (let i = 0; i < toProcess.length; i++) {
+        if (pauseRef.current) break;
+
+        const item = toProcess[i];
+        const title = item.title || `Artwork ${item.id}`;
+
+        setProgress((prev) => ({
+          ...prev,
+          current: i + 1,
+          currentItem: title,
+        }));
+
+        try {
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ artworkId: item.id }),
+          });
+
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({ error: "Unknown error" }));
+            setProgress((prev) => ({
+              ...prev,
+              errors: [
+                ...prev.errors,
+                { artworkId: item.id, title, error: data.error || `HTTP ${res.status}` },
+              ],
+            }));
+          }
+        } catch (e) {
           setProgress((prev) => ({
             ...prev,
             errors: [
               ...prev.errors,
-              { artworkId: item.id, title, error: data.error || `HTTP ${res.status}` },
+              { artworkId: item.id, title, error: String(e) },
             ],
           }));
         }
-      } catch (e) {
-        setProgress((prev) => ({
-          ...prev,
-          errors: [
-            ...prev.errors,
-            { artworkId: item.id, title, error: String(e) },
-          ],
-        }));
-      }
 
-      // Rate limit delay
-      if (type === "analyze") {
-        await new Promise((r) => setTimeout(r, 1000));
-      } else {
-        await new Promise((r) => setTimeout(r, 300));
+        // Rate limit delay for Claude
+        await new Promise((r) => setTimeout(r, 500));
       }
     }
 
