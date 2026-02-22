@@ -43,9 +43,14 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // Redirect to login if not authenticated
+  // Allow home page without auth (shows landing page)
+  if (request.nextUrl.pathname === "/") {
+    return supabaseResponse;
+  }
+
+  // Redirect to landing page if not authenticated
   if (!user) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
   return supabaseResponse;

@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, DM_Serif_Display } from "next/font/google";
 import Nav from "@/components/Nav";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
+const dmSerif = DM_Serif_Display({ weight: "400", subsets: ["latin"], variable: "--font-display" });
 
 export const metadata: Metadata = {
   title: "Room Service",
@@ -17,7 +18,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} antialiased bg-surface-secondary min-h-screen`}>
+      <body className={`${inter.className} ${dmSerif.variable} antialiased bg-surface-secondary min-h-screen`}>
         <Nav />
         <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
           {children}
