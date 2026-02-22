@@ -28,6 +28,7 @@ interface SyncDashboardProps {
 }
 
 type EntityType = "artworks" | "artists" | "contacts";
+type SyncMode = "full" | "incremental";
 
 export default function SyncDashboard({
   counts,
@@ -37,38 +38,104 @@ export default function SyncDashboard({
   const router = useRouter();
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [results, setResults] = useState<Record<string, string>>({});
+  const [syncMode, setSyncMode] = useState<SyncMode>("incremental");
+
+  async function readSSE(url: string, options: RequestInit, key: string) {
+    const res = await fetch(url, options);
+
+    if (!res.ok) {
+      const data = await res.json();
+      setResults((prev) => ({ ...prev, [key]: `Error: ${data.error}` }));
+      return;
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) {
+      setResults((prev) => ({ ...prev, [key]: "Error: No response stream" }));
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const match = line.match(/^data: (.+)$/m);
+        if (!match) continue;
+        try {
+          const data = JSON.parse(match[1]);
+          if (data.heartbeat) {
+            continue;
+          }
+          if (data.progress) {
+            const p = data.progress;
+            if (p.phase === "fetching") {
+              const label = p.entity ? `${p.entity}: ` : "";
+              setResults((prev) => ({ ...prev, [key]: `${label}Fetching from Arternal...` }));
+            } else if (p.phase === "upserting") {
+              const pct = p.total > 0 ? Math.round((p.processed / p.total) * 100) : 0;
+              const label = p.entity ? `${p.entity}: ` : "";
+              setResults((prev) => ({
+                ...prev,
+                [key]: `${label}${p.processed}/${p.total} (${pct}%) — ${p.created} created, ${p.updated} updated`,
+              }));
+            } else if (p.phase === "detailing") {
+              const pct = p.total > 0 ? Math.round((p.processed / p.total) * 100) : 0;
+              const label = p.entity ? `${p.entity}: ` : "";
+              setResults((prev) => ({
+                ...prev,
+                [key]: `${label}Fetching details: ${p.processed}/${p.total} (${pct}%)`,
+              }));
+            }
+            continue;
+          }
+          return data;
+        } catch {
+          // ignore parse errors
+        }
+      }
+    }
+    return null;
+  }
 
   async function handleSync(entity: EntityType) {
     setLoading((prev) => ({ ...prev, [entity]: true }));
-    setResults((prev) => ({ ...prev, [entity]: "" }));
+    const modeLabel = syncMode === "incremental" ? "incremental" : "full";
+    setResults((prev) => ({ ...prev, [entity]: `Starting ${modeLabel} sync...` }));
 
     try {
-      const res = await fetch("/api/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entity }),
-      });
+      const data = await readSSE(
+        "/api/sync",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ entity, mode: syncMode }),
+        },
+        entity
+      );
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setResults((prev) => ({
-          ...prev,
-          [entity]: `Error: ${data.error}`,
-        }));
+      if (!data) {
+        setResults((prev) => ({ ...prev, [entity]: "Error: No response" }));
+      } else if (data.error) {
+        setResults((prev) => ({ ...prev, [entity]: `Error: ${data.error}` }));
       } else {
         const r = data.result;
+        const skippedMsg = r.skipped ? `, ${r.skipped} skipped` : "";
         setResults((prev) => ({
           ...prev,
-          [entity]: `Synced ${r.processed} ${entity}: ${r.created} created, ${r.updated} updated`,
+          [entity]: `Synced ${r.processed} ${entity}: ${r.created} created, ${r.updated} updated${skippedMsg}`,
         }));
         router.refresh();
       }
     } catch (e) {
-      setResults((prev) => ({
-        ...prev,
-        [entity]: `Error: ${String(e)}`,
-      }));
+      setResults((prev) => ({ ...prev, [entity]: `Error: ${String(e)}` }));
     } finally {
       setLoading((prev) => ({ ...prev, [entity]: false }));
     }
@@ -76,36 +143,36 @@ export default function SyncDashboard({
 
   async function handleSyncAll() {
     setLoading((prev) => ({ ...prev, all: true }));
-    setResults((prev) => ({ ...prev, all: "" }));
+    const modeLabel = syncMode === "incremental" ? "incremental" : "full";
+    setResults((prev) => ({ ...prev, all: `Starting ${modeLabel} sync...` }));
 
     try {
-      const res = await fetch("/api/sync/all", {
-        method: "POST",
-      });
+      const data = await readSSE(
+        "/api/sync/all",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: syncMode }),
+        },
+        "all"
+      );
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setResults((prev) => ({
-          ...prev,
-          all: `Error: ${data.error}`,
-        }));
+      if (!data) {
+        setResults((prev) => ({ ...prev, all: "Error: No response" }));
+      } else if (data.error) {
+        setResults((prev) => ({ ...prev, all: `Error: ${data.error}` }));
       } else {
         const summaries = data.results.map(
-          (r: { entity: string; processed: number; created: number; updated: number }) =>
-            `${r.entity}: ${r.processed} processed (${r.created} created, ${r.updated} updated)`
+          (r: { entity: string; processed: number; created: number; updated: number; skipped?: number }) => {
+            const skippedMsg = r.skipped ? `, ${r.skipped} skipped` : "";
+            return `${r.entity}: ${r.processed} processed (${r.created} created, ${r.updated} updated${skippedMsg})`;
+          }
         );
-        setResults((prev) => ({
-          ...prev,
-          all: summaries.join(" | "),
-        }));
+        setResults((prev) => ({ ...prev, all: summaries.join(" | ") }));
         router.refresh();
       }
     } catch (e) {
-      setResults((prev) => ({
-        ...prev,
-        all: `Error: ${String(e)}`,
-      }));
+      setResults((prev) => ({ ...prev, all: `Error: ${String(e)}` }));
     } finally {
       setLoading((prev) => ({ ...prev, all: false }));
     }
@@ -163,11 +230,46 @@ export default function SyncDashboard({
         ))}
       </div>
 
-      {/* Sync Buttons */}
+      {/* Sync Controls */}
       <div className="mb-8">
         <h2 className="mb-4 text-lg font-semibold text-gray-900">
           Trigger Sync
         </h2>
+
+        {/* Mode Toggle */}
+        <div className="mb-4 flex items-center gap-4">
+          <span className="text-sm font-medium text-gray-700">Mode:</span>
+          <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+            <button
+              onClick={() => setSyncMode("incremental")}
+              disabled={isAnySyncing}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                syncMode === "incremental"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              } disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              Incremental
+            </button>
+            <button
+              onClick={() => setSyncMode("full")}
+              disabled={isAnySyncing}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                syncMode === "full"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              } disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              Full
+            </button>
+          </div>
+          <span className="text-xs text-gray-400">
+            {syncMode === "incremental"
+              ? "Only sync records updated since last sync"
+              : "Re-sync all records (resumable on failure)"}
+          </span>
+        </div>
+
         <div className="flex flex-wrap gap-3">
           {entities.map(({ key, label }) => (
             <button

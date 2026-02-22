@@ -32,7 +32,10 @@ export default async function InventoryPage({
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900 mb-6">Inventory</h1>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Inventory</h1>
+        <p className="mt-1 text-sm text-gray-500">Browse and search synced artworks.</p>
+      </div>
       <InventoryList
         items={items ?? []}
         totalCount={count ?? 0}

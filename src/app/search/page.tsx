@@ -467,7 +467,10 @@ function SearchFallback() {
 export default function SearchPage() {
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900 mb-6">Search</h1>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Search</h1>
+        <p className="mt-1 text-sm text-gray-500">Find artworks by visual similarity or text description.</p>
+      </div>
       <Suspense fallback={<SearchFallback />}>
         <SearchContent />
       </Suspense>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
@@ -18,6 +18,7 @@ export default function Nav() {
   const [user, setUser] = useState<User | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   const supabase = createClient();
 
   useEffect(() => {
@@ -42,41 +43,54 @@ export default function Nav() {
 
   if (!user) return null;
 
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(href + "/");
+
   return (
-    <header className="border-b border-gray-200 bg-white">
-      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
-        {/* Logo */}
+    <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link
           href="/"
-          className="text-lg font-semibold tracking-tight text-gray-900"
+          className="flex items-center gap-2.5"
         >
-          Gallery AI Toolkit
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600 text-white">
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42" />
+            </svg>
+          </div>
+          <span className="text-base font-semibold tracking-tight text-gray-900">
+            Room Service
+          </span>
         </Link>
 
-        {/* Desktop nav */}
         <nav className="hidden items-center gap-1 md:flex">
           {navLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className="rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+              className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                isActive(link.href)
+                  ? "bg-primary-50 text-primary-700"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+              }`}
             >
               {link.label}
             </Link>
           ))}
 
           <div className="ml-4 flex items-center gap-3 border-l border-gray-200 pl-4">
-            <span className="text-sm text-gray-500">{user.email}</span>
+            <span className="text-sm text-gray-500 max-w-[180px] truncate">
+              {user.email}
+            </span>
             <button
               onClick={handleLogout}
-              className="rounded-md px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+              className="rounded-md px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
             >
-              Logout
+              Sign out
             </button>
           </div>
         </nav>
 
-        {/* Mobile hamburger */}
         <button
           onClick={() => setMenuOpen(!menuOpen)}
           className="inline-flex items-center justify-center rounded-md p-2 text-gray-600 hover:bg-gray-100 md:hidden"
@@ -106,7 +120,6 @@ export default function Nav() {
         </button>
       </div>
 
-      {/* Mobile menu */}
       {menuOpen && (
         <div className="border-t border-gray-200 bg-white md:hidden">
           <div className="space-y-1 px-4 pb-3 pt-2">
@@ -115,7 +128,11 @@ export default function Nav() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setMenuOpen(false)}
-                className="block rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                className={`block rounded-md px-3 py-2 text-sm font-medium ${
+                  isActive(link.href)
+                    ? "bg-primary-50 text-primary-700"
+                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                }`}
               >
                 {link.label}
               </Link>
@@ -124,9 +141,9 @@ export default function Nav() {
               <p className="px-3 py-1 text-sm text-gray-500">{user.email}</p>
               <button
                 onClick={handleLogout}
-                className="block w-full rounded-md px-3 py-2 text-left text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                className="block w-full rounded-md px-3 py-2 text-left text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900"
               >
-                Logout
+                Sign out
               </button>
             </div>
           </div>

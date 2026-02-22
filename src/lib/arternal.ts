@@ -177,6 +177,8 @@ export interface ContactItem {
   phone_mobile: string | null;
   type: string | null;
   display_name: string;
+  created_at: string;
+  updated_at: string;
   primary_address?: {
     street: string | null;
     city: string | null;
@@ -336,26 +338,45 @@ export async function createContact(
 // Pagination helper
 // ---------------------------------------------------------------------------
 
+export interface FetchAllPagesOptions<T = unknown> {
+  sort?: string;
+  order?: "asc" | "desc";
+  startOffset?: number;
+  /** Called per page. Return false to stop fetching early. */
+  onPage?: (page: T[], offset: number) => boolean;
+}
+
 export async function fetchAllPages<T>(
   fetcher: (
     params: Record<string, string>,
   ) => Promise<{ data: T[]; pagination: Pagination }>,
   baseParams: Record<string, string> = {},
   pageSize: number = 100,
+  options?: FetchAllPagesOptions<T>,
 ): Promise<T[]> {
   const all: T[] = [];
-  let offset = 0;
+  let offset = options?.startOffset ?? 0;
   let hasMore = true;
+
+  const sortParams: Record<string, string> = {};
+  if (options?.sort) sortParams.sort = options.sort;
+  if (options?.order) sortParams.order = options.order;
 
   while (hasMore) {
     const result = await fetcher({
       ...baseParams,
+      ...sortParams,
       limit: String(pageSize),
       offset: String(offset),
     });
     all.push(...result.data);
     hasMore = result.pagination.has_more;
     offset += pageSize;
+
+    // Allow caller to stop early (e.g., for incremental sync)
+    if (options?.onPage && !options.onPage(result.data, offset)) {
+      break;
+    }
   }
 
   return all;

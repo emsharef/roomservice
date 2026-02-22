@@ -204,6 +204,40 @@ export default async function InventoryDetailPage({
         </div>
       </div>
 
+      {/* Additional Images */}
+      {item.images && item.images.length > 1 && (
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mt-6">
+          <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">
+            All Images ({item.images.length})
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {item.images.map((img: { id: number; url: string; title: string | null; type: string | null; is_primary: boolean }) => (
+              <div key={img.id} className="relative group">
+                <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square flex items-center justify-center">
+                  <img
+                    src={img.url}
+                    alt={img.title || item.title || "Artwork image"}
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                {(img.title || img.is_primary) && (
+                  <div className="mt-1 flex items-center gap-1">
+                    {img.is_primary && (
+                      <span className="text-[10px] font-medium bg-indigo-100 text-indigo-700 rounded px-1.5 py-0.5">
+                        Primary
+                      </span>
+                    )}
+                    {img.title && (
+                      <span className="text-xs text-gray-500 truncate">{img.title}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* AI Analysis section */}
       {extended && (extended.ai_description || (extended.style_tags && extended.style_tags.length > 0) || (extended.subject_tags && extended.subject_tags.length > 0) || (extended.mood_tags && extended.mood_tags.length > 0)) && (
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mt-6">
