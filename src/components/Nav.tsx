@@ -79,6 +79,12 @@ export default function Nav() {
             <span className="text-sm text-gray-500 max-w-[180px] truncate">
               {user.email}
             </span>
+            <Link
+              href="/settings"
+              className="rounded-md px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+            >
+              Settings
+            </Link>
             <button
               onClick={handleLogout}
               className="rounded-md px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
@@ -136,6 +142,13 @@ export default function Nav() {
             ))}
             <div className="border-t border-gray-200 pt-2">
               <p className="px-3 py-1 text-sm text-gray-500">{user.email}</p>
+              <Link
+                href="/settings"
+                onClick={() => setMenuOpen(false)}
+                className="block w-full rounded-md px-3 py-2 text-left text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+              >
+                Settings
+              </Link>
               <button
                 onClick={handleLogout}
                 className="block w-full rounded-md px-3 py-2 text-left text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900"

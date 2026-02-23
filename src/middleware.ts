@@ -53,6 +53,32 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
+  // Check MFA assurance level
+  const pathname = request.nextUrl.pathname;
+  const isOnMfaSetup = pathname === "/mfa/setup";
+  const isOnMfaVerify = pathname === "/mfa/verify";
+
+  const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+
+  if (aalData) {
+    const { currentLevel, nextLevel } = aalData;
+
+    // User has no MFA enrolled — force setup (unless already on setup page)
+    if (nextLevel === "aal1" && !isOnMfaSetup) {
+      return NextResponse.redirect(new URL("/mfa/setup", request.url));
+    }
+
+    // User has MFA enrolled but hasn't verified this session — force verify
+    if (currentLevel === "aal1" && nextLevel === "aal2" && !isOnMfaVerify) {
+      return NextResponse.redirect(new URL("/mfa/verify", request.url));
+    }
+
+    // User is on MFA pages but already verified (or no MFA needed after setup)
+    if ((isOnMfaSetup || isOnMfaVerify) && currentLevel === "aal2") {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+  }
+
   return supabaseResponse;
 }
 

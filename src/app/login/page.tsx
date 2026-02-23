@@ -28,7 +28,18 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/");
+    // Check MFA status and redirect accordingly
+    const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+
+    if (aalData?.nextLevel === "aal1") {
+      // No MFA enrolled — send to setup
+      router.push("/mfa/setup");
+    } else if (aalData?.currentLevel === "aal1" && aalData?.nextLevel === "aal2") {
+      // MFA enrolled but not verified — send to verify
+      router.push("/mfa/verify");
+    } else {
+      router.push("/");
+    }
     router.refresh();
   }
 
