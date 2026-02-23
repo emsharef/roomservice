@@ -54,7 +54,7 @@ function SkeletonCard() {
   );
 }
 
-function ResultCard({ result }: { result: SearchResult }) {
+function ResultCard({ result, showSimilarity }: { result: SearchResult; showSimilarity?: boolean }) {
   const priceStr = formatPrice(result.price, result.price_currency);
   const matchPercent = Math.round(result.similarity * 100);
 
@@ -124,11 +124,13 @@ function ResultCard({ result }: { result: SearchResult }) {
           )}
         </div>
 
-        <div className="mt-2">
-          <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
-            {matchPercent}% match
-          </span>
-        </div>
+        {showSimilarity && (
+          <div className="mt-2">
+            <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+              {matchPercent}% match
+            </span>
+          </div>
+        )}
 
         {result.style_tags && result.style_tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
@@ -147,6 +149,16 @@ function ResultCard({ result }: { result: SearchResult }) {
   );
 }
 
+function ResultGrid({ results, showSimilarity }: { results: SearchResult[]; showSimilarity?: boolean }) {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+      {results.map((result) => (
+        <ResultCard key={result.artwork_id} result={result} showSimilarity={showSimilarity} />
+      ))}
+    </div>
+  );
+}
+
 function SearchContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -154,7 +166,8 @@ function SearchContent() {
   const similarParam = searchParams.get("similar");
 
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [keywordResults, setKeywordResults] = useState<SearchResult[]>([]);
+  const [semanticResults, setSemanticResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -183,13 +196,21 @@ function SearchContent() {
 
         if (!res.ok) {
           setError(data.error || "Search failed");
-          setResults([]);
+          setKeywordResults([]);
+          setSemanticResults([]);
+        } else if (data.keywordResults !== undefined) {
+          // Hybrid search response
+          setKeywordResults(data.keywordResults || []);
+          setSemanticResults(data.semanticResults || []);
         } else {
-          setResults(data.results || []);
+          // Legacy response (image/similar search)
+          setKeywordResults([]);
+          setSemanticResults(data.results || []);
         }
       } catch (err) {
         setError(String(err));
-        setResults([]);
+        setKeywordResults([]);
+        setSemanticResults([]);
       } finally {
         setLoading(false);
       }
@@ -222,9 +243,13 @@ function SearchContent() {
 
   function clearSimilar() {
     router.push("/search");
-    setResults([]);
+    setKeywordResults([]);
+    setSemanticResults([]);
     setSearched(false);
   }
+
+  const totalResults = keywordResults.length + semanticResults.length;
+  const hasResults = totalResults > 0;
 
   return (
     <>
@@ -267,7 +292,7 @@ function SearchContent() {
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by description, style, or visual similarity..."
+                placeholder="Search by artist, title, style, or description..."
                 className="block w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
               />
             </div>
@@ -382,18 +407,35 @@ function SearchContent() {
             <SkeletonCard key={i} />
           ))}
         </div>
-      ) : searched && results.length > 0 ? (
+      ) : searched && hasResults ? (
         <>
           <p className="text-sm text-gray-500 mb-4">
-            {results.length} result{results.length !== 1 ? "s" : ""} found
+            {totalResults} result{totalResults !== 1 ? "s" : ""} found
           </p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            {results.map((result) => (
-              <ResultCard key={result.artwork_id} result={result} />
-            ))}
-          </div>
+
+          {/* Exact Matches */}
+          {keywordResults.length > 0 && (
+            <div className="mb-8">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">
+                Exact Matches
+              </h2>
+              <ResultGrid results={keywordResults} />
+            </div>
+          )}
+
+          {/* Similar Artworks (semantic) */}
+          {semanticResults.length > 0 && (
+            <div>
+              {keywordResults.length > 0 && (
+                <h2 className="text-lg font-semibold text-gray-900 mb-3">
+                  Similar Artworks
+                </h2>
+              )}
+              <ResultGrid results={semanticResults} showSimilarity />
+            </div>
+          )}
         </>
-      ) : searched && results.length === 0 ? (
+      ) : searched && !hasResults ? (
         <div className="text-center py-16">
           <svg
             className="mx-auto h-12 w-12 text-gray-400"
@@ -432,12 +474,12 @@ function SearchContent() {
             />
           </svg>
           <h3 className="mt-3 text-sm font-medium text-gray-900">
-            Visual &amp; Semantic Search
+            Discover Artworks
           </h3>
           <p className="mt-1 text-sm text-gray-500 max-w-md mx-auto">
-            Enter a search query to find artworks by visual similarity, style,
-            or description. Try queries like &quot;blue abstract painting&quot;
-            or &quot;figurative portrait in oil&quot;.
+            Search by artist name, title, or describe what you&apos;re looking
+            for. Try &quot;Eleanor Schiltz&quot; for exact matches or
+            &quot;moody dark landscape&quot; for visual discovery.
           </p>
         </div>
       )}
@@ -468,8 +510,8 @@ export default function SearchPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Search</h1>
-        <p className="mt-1 text-sm text-gray-500">Find artworks by visual similarity or text description.</p>
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Discover</h1>
+        <p className="mt-1 text-sm text-gray-500">Find artworks by artist, title, style, or visual similarity.</p>
       </div>
       <Suspense fallback={<SearchFallback />}>
         <SearchContent />

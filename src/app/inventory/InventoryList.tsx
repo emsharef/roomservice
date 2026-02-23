@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
-interface ArtworkItem {
+interface InventoryItem {
   id: number;
   title: string | null;
   catalog_number: string | null;
@@ -13,30 +13,250 @@ interface ArtworkItem {
   price_currency: string | null;
   status: string | null;
   primary_image_url: string | null;
-  artwork_artists: { artist_id: number; display_name: string | null }[];
+  artist_names: string | null;
+  total_count: number;
+}
+
+interface Filters {
+  title: string;
+  artist: string;
+  medium: string;
+  year: string;
+  status: string;
+}
+
+type SortableColumn = "title" | "artist" | "medium" | "year" | "price" | "status";
+
+const STATUS_OPTIONS = [
+  { value: "", label: "All" },
+  { value: "available", label: "Available" },
+  { value: "sold", label: "Sold" },
+  { value: "hold", label: "Hold" },
+  { value: "on consignment", label: "On Consignment" },
+  { value: "nfs", label: "NFS" },
+  { value: "n/a", label: "N/A" },
+];
+
+function FilterPopover({
+  column,
+  value,
+  onApply,
+  onClose,
+}: {
+  column: SortableColumn;
+  value: string;
+  onApply: (value: string) => void;
+  onClose: () => void;
+}) {
+  const [localValue, setLocalValue] = useState(value);
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [onClose]);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    onApply(localValue);
+  }
+
+  if (column === "status") {
+    return (
+      <div
+        ref={ref}
+        className="absolute top-full left-0 mt-1 z-50 bg-white rounded-lg shadow-lg border border-gray-200 p-2 min-w-[160px]"
+      >
+        {STATUS_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => onApply(opt.value)}
+            className={`block w-full text-left px-3 py-1.5 text-sm rounded hover:bg-gray-100 transition-colors ${
+              value === opt.value ? "bg-gray-100 font-medium" : ""
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={ref}
+      className="absolute top-full left-0 mt-1 z-50 bg-white rounded-lg shadow-lg border border-gray-200 p-2 min-w-[200px]"
+    >
+      <form onSubmit={handleSubmit} className="flex gap-1.5">
+        <input
+          ref={inputRef}
+          type="text"
+          value={localValue}
+          onChange={(e) => setLocalValue(e.target.value)}
+          placeholder={`Filter by ${column}...`}
+          className="flex-1 rounded border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-900 focus:border-transparent"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") onClose();
+          }}
+        />
+        <button
+          type="submit"
+          className="rounded bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-800 transition-colors"
+        >
+          Apply
+        </button>
+      </form>
+      {value && (
+        <button
+          onClick={() => onApply("")}
+          className="mt-1.5 text-xs text-gray-500 hover:text-gray-700"
+        >
+          Clear filter
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SortIcon({ active, direction }: { active: boolean; direction: string }) {
+  if (!active) {
+    return (
+      <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+      </svg>
+    );
+  }
+  if (direction === "asc") {
+    return (
+      <svg className="w-3.5 h-3.5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+      </svg>
+    );
+  }
+  return (
+    <svg className="w-3.5 h-3.5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+    </svg>
+  );
+}
+
+function FilterIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      className={`w-3 h-3 ${active ? "text-gray-900" : "text-gray-400"}`}
+      fill={active ? "currentColor" : "none"}
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+      />
+    </svg>
+  );
+}
+
+function ColumnHeader({
+  label,
+  column,
+  currentSort,
+  currentOrder,
+  filterValue,
+  onSort,
+  onFilter,
+  align,
+  className,
+}: {
+  label: string;
+  column: SortableColumn;
+  currentSort: string;
+  currentOrder: string;
+  filterValue: string;
+  onSort: (column: SortableColumn) => void;
+  onFilter: (column: SortableColumn, value: string) => void;
+  align?: "right";
+  className?: string;
+}) {
+  const [filterOpen, setFilterOpen] = useState(false);
+  const isSorted = currentSort === column;
+  const hasFilter = filterValue !== "";
+
+  return (
+    <th
+      className={`px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider relative ${
+        align === "right" ? "text-right" : "text-left"
+      } ${className ?? ""}`}
+    >
+      <div className={`flex items-center gap-1 ${align === "right" ? "justify-end" : ""}`}>
+        <button
+          onClick={() => onSort(column)}
+          className="flex items-center gap-1 hover:text-gray-900 transition-colors group"
+        >
+          <span>{label}</span>
+          <SortIcon active={isSorted} direction={isSorted ? currentOrder : ""} />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setFilterOpen(!filterOpen);
+          }}
+          className={`p-0.5 rounded hover:bg-gray-200 transition-colors ${hasFilter ? "bg-gray-200" : ""}`}
+          title={`Filter by ${label}`}
+        >
+          <FilterIcon active={hasFilter} />
+        </button>
+      </div>
+      {filterOpen && (
+        <FilterPopover
+          column={column}
+          value={filterValue}
+          onApply={(value) => {
+            onFilter(column, value);
+            setFilterOpen(false);
+          }}
+          onClose={() => setFilterOpen(false)}
+        />
+      )}
+    </th>
+  );
 }
 
 export default function InventoryList({
   items,
   totalCount,
   currentPage,
-  search: initialSearch,
-  status: initialStatus,
+  filters,
+  sort,
+  order,
   error,
 }: {
-  items: ArtworkItem[];
+  items: InventoryItem[];
   totalCount: number;
   currentPage: number;
-  search: string;
-  status: string;
+  filters: Filters;
+  sort: string;
+  order: string;
   error: string | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [search, setSearch] = useState(initialSearch);
   const pageSize = 20;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const hasMore = currentPage < totalPages;
+
+  const hasActiveFilters = Object.values(filters).some((v) => v !== "");
 
   const updateParams = useCallback(
     (updates: Record<string, string>) => {
@@ -57,10 +277,23 @@ export default function InventoryList({
     [router, searchParams]
   );
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateParams({ search });
-  };
+  function handleSort(column: SortableColumn) {
+    if (sort === column) {
+      updateParams({ sort: column, order: order === "asc" ? "desc" : "asc" });
+    } else {
+      updateParams({ sort: column, order: "asc" });
+    }
+  }
+
+  function handleFilter(column: SortableColumn, value: string) {
+    const filterKey = `filter_${column}`;
+    updateParams({ [filterKey]: value });
+  }
+
+  function clearFilters() {
+    const params = new URLSearchParams();
+    router.push("/inventory");
+  }
 
   const formatPrice = (price: number | null, currency: string | null) => {
     if (price === null || price === undefined) return "\u2014";
@@ -80,47 +313,48 @@ export default function InventoryList({
 
   return (
     <div>
-      {/* Filters */}
-      <div className="mb-6 flex flex-col sm:flex-row gap-3">
-        <form onSubmit={handleSearch} className="flex-1 flex gap-2">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by title or catalog number..."
-            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-          />
-          <button
-            type="submit"
-            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
-          >
-            Search
-          </button>
-          {(initialSearch || initialStatus) && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearch("");
-                router.push("/inventory");
-              }}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 transition-colors"
-            >
-              Clear
-            </button>
+      {/* Active filters indicator */}
+      {hasActiveFilters && (
+        <div className="mb-3 flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-gray-500">Filters:</span>
+          {filters.title && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+              Title: {filters.title}
+              <button onClick={() => handleFilter("title", "")} className="hover:text-gray-900">&times;</button>
+            </span>
           )}
-        </form>
-        <select
-          value={initialStatus}
-          onChange={(e) => updateParams({ status: e.target.value })}
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
-        >
-          <option value="">All statuses</option>
-          <option value="available">Available</option>
-          <option value="sold">Sold</option>
-          <option value="hold">Hold</option>
-          <option value="on consignment">On Consignment</option>
-        </select>
-      </div>
+          {filters.artist && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+              Artist: {filters.artist}
+              <button onClick={() => handleFilter("artist", "")} className="hover:text-gray-900">&times;</button>
+            </span>
+          )}
+          {filters.medium && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+              Medium: {filters.medium}
+              <button onClick={() => handleFilter("medium", "")} className="hover:text-gray-900">&times;</button>
+            </span>
+          )}
+          {filters.year && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+              Year: {filters.year}
+              <button onClick={() => handleFilter("year", "")} className="hover:text-gray-900">&times;</button>
+            </span>
+          )}
+          {filters.status && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+              Status: {filters.status}
+              <button onClick={() => handleFilter("status", "")} className="hover:text-gray-900">&times;</button>
+            </span>
+          )}
+          <button
+            onClick={clearFilters}
+            className="text-xs text-gray-500 hover:text-gray-700 underline"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="mb-6 rounded-lg bg-red-50 border border-red-200 p-4 text-sm text-red-700">
@@ -142,24 +376,63 @@ export default function InventoryList({
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
                 Image
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Title
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Artist
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                Medium
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
-                Year
-              </th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Price
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
+              <ColumnHeader
+                label="Title"
+                column="title"
+                currentSort={sort}
+                currentOrder={order}
+                filterValue={filters.title}
+                onSort={handleSort}
+                onFilter={handleFilter}
+              />
+              <ColumnHeader
+                label="Artist"
+                column="artist"
+                currentSort={sort}
+                currentOrder={order}
+                filterValue={filters.artist}
+                onSort={handleSort}
+                onFilter={handleFilter}
+              />
+              <ColumnHeader
+                label="Medium"
+                column="medium"
+                currentSort={sort}
+                currentOrder={order}
+                filterValue={filters.medium}
+                onSort={handleSort}
+                onFilter={handleFilter}
+                className="hidden md:table-cell"
+              />
+              <ColumnHeader
+                label="Year"
+                column="year"
+                currentSort={sort}
+                currentOrder={order}
+                filterValue={filters.year}
+                onSort={handleSort}
+                onFilter={handleFilter}
+                className="hidden sm:table-cell"
+              />
+              <ColumnHeader
+                label="Price"
+                column="price"
+                currentSort={sort}
+                currentOrder={order}
+                filterValue=""
+                onSort={handleSort}
+                onFilter={handleFilter}
+                align="right"
+              />
+              <ColumnHeader
+                label="Status"
+                column="status"
+                currentSort={sort}
+                currentOrder={order}
+                filterValue={filters.status}
+                onSort={handleSort}
+                onFilter={handleFilter}
+              />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -210,12 +483,7 @@ export default function InventoryList({
                   )}
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-600">
-                  {item.artwork_artists && item.artwork_artists.length > 0 ? (
-                    item.artwork_artists
-                      .map((a) => a.display_name)
-                      .filter(Boolean)
-                      .join(", ")
-                  ) : (
+                  {item.artist_names || (
                     <span className="text-gray-400">{"\u2014"}</span>
                   )}
                 </td>

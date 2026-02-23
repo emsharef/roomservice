@@ -79,3 +79,51 @@ export async function searchArtworks(params: SearchParams): Promise<SearchResult
   if (error) throw error;
   return (data || []) as SearchResult[];
 }
+
+export interface HybridSearchResult {
+  keywordResults: SearchResult[];
+  semanticResults: SearchResult[];
+}
+
+export async function hybridSearchArtworks(params: SearchParams): Promise<HybridSearchResult> {
+  const supabase = createAdminClient();
+  const limit = params.limit || 20;
+  const query = params.query?.trim();
+
+  if (!query) {
+    throw new Error("Must provide a query for hybrid search");
+  }
+
+  // Run keyword + semantic in parallel
+  const [keywordResult, semanticResult] = await Promise.allSettled([
+    supabase.rpc("keyword_search_artworks", {
+      search_term: query,
+      match_count: limit,
+      filter_status: params.status || null,
+      filter_min_price: params.minPrice || null,
+      filter_max_price: params.maxPrice || null,
+      filter_medium: params.medium || null,
+      filter_artist_id: params.artistId || null,
+    }),
+    searchArtworks(params),
+  ]);
+
+  const keywordResults: SearchResult[] =
+    keywordResult.status === "fulfilled" && !keywordResult.value.error
+      ? (keywordResult.value.data as SearchResult[]) || []
+      : [];
+
+  const semanticResults: SearchResult[] =
+    semanticResult.status === "fulfilled" ? semanticResult.value : [];
+
+  // Deduplicate: remove from semantic any IDs already in keyword results
+  const keywordIds = new Set(keywordResults.map((r) => r.artwork_id));
+  const deduplicatedSemantic = semanticResults.filter(
+    (r) => !keywordIds.has(r.artwork_id)
+  );
+
+  return {
+    keywordResults,
+    semanticResults: deduplicatedSemantic,
+  };
+}
