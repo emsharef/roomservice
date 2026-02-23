@@ -47,8 +47,11 @@ export async function POST(request: NextRequest) {
   }
 
   // 3. Invite user via Supabase — sends an email with a link to set their password
+  const siteUrl = request.headers.get("origin") || process.env.NEXT_PUBLIC_SITE_URL || "https://roomservice-tools.vercel.app";
   const { data: newUser, error: createError } =
-    await admin.auth.admin.inviteUserByEmail(email);
+    await admin.auth.admin.inviteUserByEmail(email, {
+      redirectTo: `${siteUrl}/auth/confirm?next=/set-password`,
+    });
 
   if (createError) {
     return NextResponse.json(
