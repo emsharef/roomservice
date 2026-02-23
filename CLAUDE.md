@@ -27,23 +27,24 @@ Arternal API  -->  Sync Service  -->  Supabase (PostgreSQL + pgvector)
 src/
   components/
     Nav.tsx                    # Top nav bar with auth state
+    TableControls.tsx          # Shared table UI: ColumnHeader, FilterPopover, SortIcon, FilterIcon, ActiveFilters, Pagination
   lib/
     arternal.ts              # Arternal API client: types, fetch functions, pagination helper
     sync.ts                  # Sync service: full/incremental sync with detail fetching
     vision.ts                # Claude Vision artwork analysis
     embeddings.ts            # Voyage AI multimodal embedding service
-    search.ts                # Semantic + text search logic
+    search.ts                # Hybrid keyword + semantic search with pagination
     supabase/
       client.ts              # Browser Supabase client
       server.ts              # Server Supabase client (cookie-based auth)
       admin.ts               # Admin Supabase client (service role key)
   app/
-    layout.tsx               # Root layout with nav (Inventory, Artists, Contacts, Search, Admin)
+    layout.tsx               # Root layout with nav (Inventory, Artists, Contacts, Discover, Admin)
     page.tsx                 # Home/inventory redirect
     login/page.tsx           # Auth login page
     inventory/
       page.tsx               # Inventory list (server component)
-      InventoryList.tsx       # List component with search/filters
+      InventoryList.tsx       # List component with interactive column headers (sort/filter)
       [id]/page.tsx          # Artwork detail: images gallery, fields, AI analysis
     artists/
       page.tsx               # Artists list
@@ -53,7 +54,7 @@ src/
       page.tsx               # Contacts list
       ContactsList.tsx        # List component
       [id]/page.tsx          # Contact detail: info, tags, transactions, activities, notes
-    search/page.tsx          # Semantic + text search UI
+    search/page.tsx          # Discover page: hybrid keyword + semantic search with "Show more"
     admin/
       layout.tsx             # Admin layout with sub-nav
       page.tsx               # Admin dashboard
@@ -102,6 +103,35 @@ scripts/
 **sync_log** — id, entity_type, direction, status (running/completed/error), records_processed, records_created, records_updated, error (stores count + first 10 error messages), started_at, completed_at, triggered_by
 
 **user_profiles** — id, email, display_name, role (admin/staff/viewer), created_at, updated_at
+
+### RPC Functions (PostgreSQL)
+
+**search_inventory** — Server-side filtering/sorting for inventory page. Params: filter_title, filter_artist, filter_catalog, filter_medium, filter_year, filter_status, sort_column, sort_direction, page_size, page_offset. JOINs artwork_artists for artist name filtering/sorting. Returns artist_names via string_agg, total_count via COUNT(*) OVER().
+
+**search_artists** — Server-side filtering/sorting for artists page. Params: filter_name, filter_country, filter_life_dates, sort_column, sort_direction, page_size, page_offset.
+
+**search_contacts** — Server-side filtering/sorting for contacts page. Params: filter_name, filter_email, filter_company, filter_location, filter_type, sort_column, sort_direction, page_size, page_offset.
+
+**keyword_search_artworks** — ILIKE search on title, catalog_number, artist display_name. Params: search_term, match_count, match_offset, filter_status/min_price/max_price/medium/artist_id. Returns total_count. Orders by match quality (exact > prefix > contains).
+
+**search_artworks** — Vector similarity search using pgvector. Params: query_embedding, embedding_col (clip_embedding or description_embedding), match_count, match_offset, filter_*. Used for semantic search and "more like this".
+
+## Search & Discovery (`src/lib/search.ts`)
+
+- **searchArtworks()** — Vector similarity search via the search_artworks RPC
+- **hybridSearchArtworks()** — Runs keyword + semantic in parallel via Promise.allSettled, deduplicates results. Returns { keywordResults, semanticResults, keywordTotal }
+- Text queries use description_embedding space; image queries and "more like this" use clip_embedding
+- The Discover page (/search) shows "Exact Matches" (keyword) above "Similar Artworks" (semantic) with "Show more" pagination for both
+
+## Interactive Table Headers
+
+All list pages (Inventory, Artists, Contacts) use shared components from `src/components/TableControls.tsx`:
+- **ColumnHeader** — Click to sort (toggle asc/desc), dropdown icon to open filter popover
+- **FilterPopover** — Text input for free-text filters, or dropdown for enum fields (e.g., Status)
+- **ActiveFilters** — Shows removable filter chips with "Clear all"
+- **Pagination** — Page navigation with ellipsis for large page counts
+
+Filter/sort state is driven by URL search params (server-side rendering, bookmarkable). Params: `filter_<column>`, `sort`, `order`, `page`.
 
 ## Sync Service (`src/lib/sync.ts`)
 
