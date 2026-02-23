@@ -53,8 +53,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  // Check MFA assurance level
+  // Allow set-password page (invited users who haven't set a password yet)
   const pathname = request.nextUrl.pathname;
+  if (pathname === "/set-password") {
+    return supabaseResponse;
+  }
+
+  // Check MFA assurance level
   const isOnMfaSetup = pathname === "/mfa/setup";
   const isOnMfaVerify = pathname === "/mfa/verify";
 

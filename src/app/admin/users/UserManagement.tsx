@@ -161,7 +161,6 @@ function InviteForm({ onComplete }: { onComplete: () => void }) {
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState("viewer");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -176,7 +175,7 @@ function InviteForm({ onComplete }: { onComplete: () => void }) {
       const res = await fetch("/api/admin/users/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, displayName, role, password }),
+        body: JSON.stringify({ email, displayName, role }),
       });
 
       const data = await res.json();
@@ -184,7 +183,7 @@ function InviteForm({ onComplete }: { onComplete: () => void }) {
       if (!res.ok) {
         setError(data.error ?? "Failed to invite user");
       } else {
-        setSuccess(`User ${data.user.email} created successfully.`);
+        setSuccess(`Invite sent to ${data.user.email}. They'll receive an email to set their password.`);
         setTimeout(() => onComplete(), 1500);
       }
     } catch (e) {
@@ -252,24 +251,6 @@ function InviteForm({ onComplete }: { onComplete: () => void }) {
               <option value="viewer">viewer</option>
             </select>
           </div>
-          <div>
-            <label
-              htmlFor="invite-password"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Temporary Password
-            </label>
-            <input
-              id="invite-password"
-              type="password"
-              required
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-900"
-              placeholder="Min 6 characters"
-            />
-          </div>
         </div>
 
         {error && (
@@ -288,7 +269,7 @@ function InviteForm({ onComplete }: { onComplete: () => void }) {
           disabled={loading}
           className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? "Creating..." : "Create User"}
+          {loading ? "Sending invite..." : "Send Invite"}
         </button>
       </form>
     </div>

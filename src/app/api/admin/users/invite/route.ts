@@ -26,16 +26,15 @@ export async function POST(request: NextRequest) {
 
   // 2. Parse body
   const body = await request.json();
-  const { email, displayName, role, password } = body as {
+  const { email, displayName, role } = body as {
     email?: string;
     displayName?: string;
     role?: string;
-    password?: string;
   };
 
-  if (!email || !password) {
+  if (!email) {
     return NextResponse.json(
-      { error: "email and password are required" },
+      { error: "email is required" },
       { status: 400 }
     );
   }
@@ -47,13 +46,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 3. Create user via Supabase admin auth
+  // 3. Invite user via Supabase — sends an email with a link to set their password
   const { data: newUser, error: createError } =
-    await admin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-    });
+    await admin.auth.admin.inviteUserByEmail(email);
 
   if (createError) {
     return NextResponse.json(
