@@ -94,3 +94,51 @@ export async function PUT(request: NextRequest) {
 
   return NextResponse.json({ success: true });
 }
+
+export async function DELETE(request: NextRequest) {
+  const auth = await verifyAdmin();
+  if (auth.error) {
+    return NextResponse.json(
+      { error: auth.error },
+      { status: auth.status }
+    );
+  }
+
+  const body = await request.json();
+  const { userId } = body as { userId?: string };
+
+  if (!userId) {
+    return NextResponse.json(
+      { error: "userId is required" },
+      { status: 400 }
+    );
+  }
+
+  // Prevent self-deletion
+  if (userId === auth.user!.id) {
+    return NextResponse.json(
+      { error: "Cannot delete your own account" },
+      { status: 400 }
+    );
+  }
+
+  const admin = createAdminClient();
+
+  // Delete profile first, then auth user
+  const { error: profileError } = await admin
+    .from("user_profiles")
+    .delete()
+    .eq("id", userId);
+
+  if (profileError) {
+    return NextResponse.json({ error: profileError.message }, { status: 500 });
+  }
+
+  const { error: authError } = await admin.auth.admin.deleteUser(userId);
+
+  if (authError) {
+    return NextResponse.json({ error: authError.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}

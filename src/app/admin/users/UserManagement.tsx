@@ -22,6 +22,7 @@ export default function UserManagement({
 }: UserManagementProps) {
   const router = useRouter();
   const [updatingRole, setUpdatingRole] = useState<string | null>(null);
+  const [deletingUser, setDeletingUser] = useState<string | null>(null);
   const [roleError, setRoleError] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
 
@@ -46,6 +47,31 @@ export default function UserManagement({
       setRoleError(String(e));
     } finally {
       setUpdatingRole(null);
+    }
+  }
+
+  async function handleDeleteUser(userId: string, email: string) {
+    if (!confirm(`Delete user ${email}? This cannot be undone.`)) return;
+    setDeletingUser(userId);
+    setRoleError(null);
+
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setRoleError(data.error ?? "Failed to delete user");
+      } else {
+        router.refresh();
+      }
+    } catch (e) {
+      setRoleError(String(e));
+    } finally {
+      setDeletingUser(null);
     }
   }
 
@@ -97,13 +123,15 @@ export default function UserManagement({
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                 Created
               </th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {users.length === 0 && (
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={5}
                   className="px-4 py-8 text-center text-sm text-gray-500"
                 >
                   No users found.
@@ -146,6 +174,17 @@ export default function UserManagement({
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
                     {formatDate(user.created_at)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-sm">
+                    {!isSelf && (
+                      <button
+                        onClick={() => handleDeleteUser(user.id, user.email)}
+                        disabled={deletingUser === user.id}
+                        className="text-red-600 hover:text-red-800 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {deletingUser === user.id ? "Deleting..." : "Delete"}
+                      </button>
+                    )}
                   </td>
                 </tr>
               );
