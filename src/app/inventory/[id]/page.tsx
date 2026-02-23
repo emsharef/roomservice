@@ -310,6 +310,43 @@ export default async function InventoryDetailPage({
             </div>
           )}
 
+          {extended.color_palette && Array.isArray(extended.color_palette) && extended.color_palette.length > 0 && (
+            <div className="mb-4">
+              <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+                Color Palette
+              </h3>
+              {/* Continuous palette bar */}
+              <div className="flex h-8 rounded-lg overflow-hidden shadow-inner">
+                {extended.color_palette.map((color: { hex: string; name: string; percentage: number }) => (
+                  <div
+                    key={color.hex}
+                    className="h-full transition-all"
+                    style={{
+                      backgroundColor: color.hex,
+                      width: `${Math.max(color.percentage * 100, 5)}%`,
+                    }}
+                    title={`${color.name} (${Math.round(color.percentage * 100)}%)`}
+                  />
+                ))}
+              </div>
+              {/* Color details */}
+              <div className="flex flex-wrap gap-3 mt-3">
+                {extended.color_palette.map((color: { hex: string; name: string; percentage: number }) => (
+                  <div key={color.hex} className="flex items-center gap-2">
+                    <span
+                      className="w-3.5 h-3.5 rounded-full ring-1 ring-black/10 shrink-0"
+                      style={{ backgroundColor: color.hex }}
+                    />
+                    <span className="text-xs text-gray-600">
+                      {color.name}
+                      <span className="text-gray-400 ml-1">{Math.round(color.percentage * 100)}%</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {extended.vision_analyzed_at && (
             <p className="text-xs text-gray-400 mt-4">
               Analyzed {new Date(extended.vision_analyzed_at).toLocaleDateString()}
