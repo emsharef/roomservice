@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useCallback } from "react";
+import { useCallback } from "react";
+import { ColumnHeader, ActiveFilters, Pagination } from "@/components/TableControls";
 
 interface ContactItem {
   id: number;
@@ -16,27 +17,47 @@ interface ContactItem {
   primary_city: string | null;
   primary_state: string | null;
   primary_country: string | null;
+  total_count: number;
 }
+
+interface Filters {
+  [key: string]: string;
+  name: string;
+  email: string;
+  company: string;
+  location: string;
+  type: string;
+}
+
+const FILTER_LABELS: Record<string, string> = {
+  name: "Name",
+  email: "Email",
+  company: "Company",
+  location: "Location",
+  type: "Type",
+};
 
 export default function ContactsList({
   contacts,
   totalCount,
   currentPage,
-  search: initialSearch,
+  filters,
+  sort,
+  order,
   error,
 }: {
   contacts: ContactItem[];
   totalCount: number;
   currentPage: number;
-  search: string;
+  filters: Filters;
+  sort: string;
+  order: string;
   error: string | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [search, setSearch] = useState(initialSearch);
   const pageSize = 20;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const hasMore = currentPage < totalPages;
 
   const updateParams = useCallback(
     (updates: Record<string, string>) => {
@@ -57,10 +78,21 @@ export default function ContactsList({
     [router, searchParams]
   );
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateParams({ search });
-  };
+  function handleSort(column: string) {
+    if (sort === column) {
+      updateParams({ sort: column, order: order === "asc" ? "desc" : "asc" });
+    } else {
+      updateParams({ sort: column, order: "asc" });
+    }
+  }
+
+  function handleFilter(column: string, value: string) {
+    updateParams({ [`filter_${column}`]: value });
+  }
+
+  function clearFilters() {
+    router.push("/contacts");
+  }
 
   const formatLocation = (contact: ContactItem) => {
     const parts = [
@@ -73,36 +105,12 @@ export default function ContactsList({
 
   return (
     <div>
-      {/* Search */}
-      <div className="mb-6 flex flex-col sm:flex-row gap-3">
-        <form onSubmit={handleSearch} className="flex-1 flex gap-2">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search contacts..."
-            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-          />
-          <button
-            type="submit"
-            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
-          >
-            Search
-          </button>
-          {initialSearch && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearch("");
-                router.push("/contacts");
-              }}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 transition-colors"
-            >
-              Clear
-            </button>
-          )}
-        </form>
-      </div>
+      <ActiveFilters
+        filters={filters}
+        labels={FILTER_LABELS}
+        onRemove={(key) => handleFilter(key, "")}
+        onClearAll={clearFilters}
+      />
 
       {error && (
         <div className="mb-6 rounded-lg bg-red-50 border border-red-200 p-4 text-sm text-red-700">
@@ -115,26 +123,59 @@ export default function ContactsList({
         {totalPages > 1 && ` \u00b7 Page ${currentPage} of ${totalPages}`}
       </p>
 
-      {/* Table */}
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Name
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
-                Email
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
-                Company
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                Location
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                Type
-              </th>
+              <ColumnHeader
+                label="Name"
+                column="name"
+                currentSort={sort}
+                currentOrder={order}
+                filterValue={filters.name}
+                onSort={handleSort}
+                onFilter={handleFilter}
+              />
+              <ColumnHeader
+                label="Email"
+                column="email"
+                currentSort={sort}
+                currentOrder={order}
+                filterValue={filters.email}
+                onSort={handleSort}
+                onFilter={handleFilter}
+                className="hidden sm:table-cell"
+              />
+              <ColumnHeader
+                label="Company"
+                column="company"
+                currentSort={sort}
+                currentOrder={order}
+                filterValue={filters.company}
+                onSort={handleSort}
+                onFilter={handleFilter}
+                className="hidden lg:table-cell"
+              />
+              <ColumnHeader
+                label="Location"
+                column="location"
+                currentSort={sort}
+                currentOrder={order}
+                filterValue={filters.location}
+                onSort={handleSort}
+                onFilter={handleFilter}
+                className="hidden md:table-cell"
+              />
+              <ColumnHeader
+                label="Type"
+                column="type"
+                currentSort={sort}
+                currentOrder={order}
+                filterValue={filters.type}
+                onSort={handleSort}
+                onFilter={handleFilter}
+                className="hidden md:table-cell"
+              />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -187,68 +228,11 @@ export default function ContactsList({
         </table>
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between">
-          <button
-            onClick={() => updateParams({ page: String(currentPage - 1) })}
-            disabled={currentPage <= 1}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            Previous
-          </button>
-          <div className="flex gap-1">
-            {generatePageNumbers(currentPage, totalPages).map((p, i) =>
-              p === "..." ? (
-                <span
-                  key={`ellipsis-${i}`}
-                  className="px-3 py-2 text-sm text-gray-500"
-                >
-                  ...
-                </span>
-              ) : (
-                <button
-                  key={p}
-                  onClick={() => updateParams({ page: String(p) })}
-                  className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    p === currentPage
-                      ? "bg-gray-900 text-white"
-                      : "text-gray-700 hover:bg-gray-100"
-                  }`}
-                >
-                  {p}
-                </button>
-              )
-            )}
-          </div>
-          <button
-            onClick={() => updateParams({ page: String(currentPage + 1) })}
-            disabled={!hasMore}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            Next
-          </button>
-        </div>
-      )}
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={(page) => updateParams({ page: String(page) })}
+      />
     </div>
   );
-}
-
-function generatePageNumbers(
-  current: number,
-  total: number
-): (number | "...")[] {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  const pages: (number | "...")[] = [1];
-  if (current > 3) pages.push("...");
-  for (
-    let i = Math.max(2, current - 1);
-    i <= Math.min(total - 1, current + 1);
-    i++
-  ) {
-    pages.push(i);
-  }
-  if (current < total - 2) pages.push("...");
-  pages.push(total);
-  return pages;
 }

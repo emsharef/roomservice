@@ -159,6 +159,26 @@ function ResultGrid({ results, showSimilarity }: { results: SearchResult[]; show
   );
 }
 
+function ShowMoreButton({
+  loading,
+  onClick,
+}: {
+  loading: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div className="mt-4 flex justify-center">
+      <button
+        onClick={onClick}
+        disabled={loading}
+        className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        {loading ? "Loading..." : "Show more"}
+      </button>
+    </div>
+  );
+}
+
 function SearchContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -168,9 +188,13 @@ function SearchContent() {
   const [query, setQuery] = useState("");
   const [keywordResults, setKeywordResults] = useState<SearchResult[]>([]);
   const [semanticResults, setSemanticResults] = useState<SearchResult[]>([]);
+  const [keywordTotal, setKeywordTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadingMoreKeyword, setLoadingMoreKeyword] = useState(false);
+  const [loadingMoreSemantic, setLoadingMoreSemantic] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastSearchParams, setLastSearchParams] = useState<Record<string, unknown> | null>(null);
 
   // Filters
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -184,6 +208,7 @@ function SearchContent() {
       setLoading(true);
       setError(null);
       setSearched(true);
+      setLastSearchParams(params);
 
       try {
         const res = await fetch("/api/search", {
@@ -198,25 +223,79 @@ function SearchContent() {
           setError(data.error || "Search failed");
           setKeywordResults([]);
           setSemanticResults([]);
+          setKeywordTotal(0);
         } else if (data.keywordResults !== undefined) {
-          // Hybrid search response
           setKeywordResults(data.keywordResults || []);
           setSemanticResults(data.semanticResults || []);
+          setKeywordTotal(data.keywordTotal || 0);
         } else {
-          // Legacy response (image/similar search)
           setKeywordResults([]);
           setSemanticResults(data.results || []);
+          setKeywordTotal(0);
         }
       } catch (err) {
         setError(String(err));
         setKeywordResults([]);
         setSemanticResults([]);
+        setKeywordTotal(0);
       } finally {
         setLoading(false);
       }
     },
     []
   );
+
+  async function loadMoreKeyword() {
+    if (!lastSearchParams) return;
+    setLoadingMoreKeyword(true);
+    try {
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...lastSearchParams,
+          keywordOffset: keywordResults.length,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.keywordResults) {
+        setKeywordResults((prev) => [...prev, ...data.keywordResults]);
+        if (data.keywordTotal) setKeywordTotal(data.keywordTotal);
+      }
+    } finally {
+      setLoadingMoreKeyword(false);
+    }
+  }
+
+  async function loadMoreSemantic() {
+    if (!lastSearchParams) return;
+    setLoadingMoreSemantic(true);
+    try {
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...lastSearchParams,
+          semanticOffset: semanticResults.length + keywordResults.length,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const newResults = data.semanticResults || data.results || [];
+        // Deduplicate against existing results
+        const existingIds = new Set([
+          ...keywordResults.map((r) => r.artwork_id),
+          ...semanticResults.map((r) => r.artwork_id),
+        ]);
+        const deduplicated = newResults.filter(
+          (r: SearchResult) => !existingIds.has(r.artwork_id)
+        );
+        setSemanticResults((prev) => [...prev, ...deduplicated]);
+      }
+    } finally {
+      setLoadingMoreSemantic(false);
+    }
+  }
 
   // Handle "more like this" on mount
   useEffect(() => {
@@ -245,11 +324,13 @@ function SearchContent() {
     router.push("/search");
     setKeywordResults([]);
     setSemanticResults([]);
+    setKeywordTotal(0);
     setSearched(false);
   }
 
   const totalResults = keywordResults.length + semanticResults.length;
   const hasResults = totalResults > 0;
+  const hasMoreKeyword = keywordResults.length < keywordTotal;
 
   return (
     <>
@@ -409,17 +490,19 @@ function SearchContent() {
         </div>
       ) : searched && hasResults ? (
         <>
-          <p className="text-sm text-gray-500 mb-4">
-            {totalResults} result{totalResults !== 1 ? "s" : ""} found
-          </p>
-
           {/* Exact Matches */}
           {keywordResults.length > 0 && (
             <div className="mb-8">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">
+              <h2 className="text-lg font-semibold text-gray-900 mb-1">
                 Exact Matches
               </h2>
+              <p className="text-sm text-gray-500 mb-3">
+                {keywordResults.length} of {keywordTotal} match{keywordTotal !== 1 ? "es" : ""}
+              </p>
               <ResultGrid results={keywordResults} />
+              {hasMoreKeyword && (
+                <ShowMoreButton loading={loadingMoreKeyword} onClick={loadMoreKeyword} />
+              )}
             </div>
           )}
 
@@ -432,6 +515,7 @@ function SearchContent() {
                 </h2>
               )}
               <ResultGrid results={semanticResults} showSimilarity />
+              <ShowMoreButton loading={loadingMoreSemantic} onClick={loadMoreSemantic} />
             </div>
           )}
         </>

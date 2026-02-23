@@ -18,8 +18,8 @@ export async function POST(request: NextRequest) {
 
     // Use hybrid search when there's a text query (not image/similar)
     if (params.query && !params.imageUrl && !params.artworkId) {
-      const { keywordResults, semanticResults } = await hybridSearchArtworks(params);
-      return NextResponse.json({ success: true, keywordResults, semanticResults });
+      const { keywordResults, semanticResults, keywordTotal } = await hybridSearchArtworks(params);
+      return NextResponse.json({ success: true, keywordResults, semanticResults, keywordTotal });
     }
 
     // Fall back to semantic-only for image/similar searches

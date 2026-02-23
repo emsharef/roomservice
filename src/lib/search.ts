@@ -11,6 +11,8 @@ export interface SearchParams {
   medium?: string;
   artistId?: number;
   limit?: number;
+  keywordOffset?: number;
+  semanticOffset?: number;
 }
 
 export interface SearchResult {
@@ -69,6 +71,7 @@ export async function searchArtworks(params: SearchParams): Promise<SearchResult
     query_embedding: embedding,
     embedding_col: embeddingCol,
     match_count: limit,
+    match_offset: params.semanticOffset || 0,
     filter_status: params.status || null,
     filter_min_price: params.minPrice || null,
     filter_max_price: params.maxPrice || null,
@@ -83,6 +86,7 @@ export async function searchArtworks(params: SearchParams): Promise<SearchResult
 export interface HybridSearchResult {
   keywordResults: SearchResult[];
   semanticResults: SearchResult[];
+  keywordTotal: number;
 }
 
 export async function hybridSearchArtworks(params: SearchParams): Promise<HybridSearchResult> {
@@ -99,6 +103,7 @@ export async function hybridSearchArtworks(params: SearchParams): Promise<Hybrid
     supabase.rpc("keyword_search_artworks", {
       search_term: query,
       match_count: limit,
+      match_offset: params.keywordOffset || 0,
       filter_status: params.status || null,
       filter_min_price: params.minPrice || null,
       filter_max_price: params.maxPrice || null,
@@ -108,10 +113,17 @@ export async function hybridSearchArtworks(params: SearchParams): Promise<Hybrid
     searchArtworks(params),
   ]);
 
-  const keywordResults: SearchResult[] =
+  const rawKeyword =
     keywordResult.status === "fulfilled" && !keywordResult.value.error
-      ? (keywordResult.value.data as SearchResult[]) || []
+      ? (keywordResult.value.data as (SearchResult & { total_count?: number })[]) || []
       : [];
+
+  const keywordTotal = rawKeyword.length > 0 && rawKeyword[0].total_count
+    ? Number(rawKeyword[0].total_count)
+    : rawKeyword.length;
+
+  // Strip total_count from results
+  const keywordResults: SearchResult[] = rawKeyword.map(({ total_count, ...rest }) => rest);
 
   const semanticResults: SearchResult[] =
     semanticResult.status === "fulfilled" ? semanticResult.value : [];
@@ -125,5 +137,6 @@ export async function hybridSearchArtworks(params: SearchParams): Promise<Hybrid
   return {
     keywordResults,
     semanticResults: deduplicatedSemantic,
+    keywordTotal,
   };
 }

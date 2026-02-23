@@ -8,25 +8,28 @@ export default async function ArtistsPage({
 }) {
   const params = await searchParams;
   const page = Math.max(1, parseInt(typeof params.page === "string" ? params.page : "1", 10));
-  const search = typeof params.search === "string" ? params.search : "";
   const pageSize = 20;
   const offset = (page - 1) * pageSize;
 
+  const filterName = typeof params.filter_name === "string" ? params.filter_name : null;
+  const filterCountry = typeof params.filter_country === "string" ? params.filter_country : null;
+  const filterLifeDates = typeof params.filter_life_dates === "string" ? params.filter_life_dates : null;
+  const sort = typeof params.sort === "string" ? params.sort : "display_name";
+  const order = typeof params.order === "string" ? params.order : "asc";
+
   const supabase = await createClient();
 
-  let query = supabase
-    .from("artists")
-    .select("id, display_name, first_name, last_name, country, work_count, bio, life_dates", { count: "exact" })
-    .order("display_name", { ascending: true })
-    .range(offset, offset + pageSize - 1);
+  const { data: artists, error } = await supabase.rpc("search_artists", {
+    filter_name: filterName,
+    filter_country: filterCountry,
+    filter_life_dates: filterLifeDates,
+    sort_column: sort,
+    sort_direction: order,
+    page_size: pageSize,
+    page_offset: offset,
+  });
 
-  if (search) {
-    query = query.or(
-      `display_name.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%`
-    );
-  }
-
-  const { data: artists, count, error } = await query;
+  const totalCount = artists && artists.length > 0 ? (artists[0] as { total_count: number }).total_count : 0;
 
   return (
     <div>
@@ -36,9 +39,15 @@ export default async function ArtistsPage({
       </div>
       <ArtistsList
         artists={artists ?? []}
-        totalCount={count ?? 0}
+        totalCount={totalCount}
         currentPage={page}
-        search={search}
+        filters={{
+          name: filterName ?? "",
+          country: filterCountry ?? "",
+          life_dates: filterLifeDates ?? "",
+        }}
+        sort={sort}
+        order={order}
         error={error?.message ?? null}
       />
     </div>
