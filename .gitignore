@@ -45,3 +45,4 @@ supabase/.temp/
 
 # trigger.dev
 .trigger/
+.worktrees/
