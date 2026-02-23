@@ -38,8 +38,8 @@ export default function SetPasswordPage() {
       return;
     }
 
-    // Password set — redirect to app (middleware will handle MFA setup)
-    router.push("/");
+    // Password set — redirect directly to MFA setup (new users won't have MFA enrolled)
+    router.push("/mfa/setup");
     router.refresh();
   }
 
