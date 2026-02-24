@@ -65,15 +65,31 @@ src/
       users/
         page.tsx             # User management page
         UserManagement.tsx   # Invite users, manage roles
+    mfa/
+      setup/page.tsx         # Forced TOTP enrollment (QR code, verify code)
+      verify/page.tsx        # TOTP verification after login
+    settings/page.tsx        # MFA re-enrollment + change password
+    set-password/page.tsx    # Password setup for invited users
+    auth/
+      confirm/route.ts       # Token exchange callback for invite emails
     api/
       sync/route.ts          # Single entity sync API (SSE streaming)
       sync/all/route.ts      # Sync-all API (SSE streaming)
+      sync/fetch/route.ts    # Page-by-page sync from Arternal (client-side loop)
+      sync/detail/route.ts   # Individual record detail fetch from Arternal
       analyze/route.ts       # Claude Vision analysis endpoint
       embed/route.ts         # CLIP embedding endpoint
       search/route.ts        # Search API
-      admin/users/route.ts   # User CRUD
-      admin/users/invite/route.ts  # User invitation
-  middleware.ts              # Auth middleware (protects all routes except /login and /api/trigger)
+      admin/users/route.ts   # User CRUD (GET list, PUT role, DELETE user)
+      admin/users/invite/route.ts  # User invitation via email
+      trigger/sync/route.ts  # Manual trigger for background sync/analysis (Trigger.dev)
+  middleware.ts              # Auth middleware: auth check, MFA enforcement, route protection
+  trigger/
+    scheduled-sync.ts        # Trigger.dev: scheduled incremental sync (every 2h)
+    analyze-new-artworks.ts  # Trigger.dev: auto-analyze new artworks (vision + embeddings)
+trigger.config.ts            # Trigger.dev project config
+docs/
+  email-templates.md         # Supabase email templates (branded HTML)
 scripts/
   run-detail-sync.ts         # Standalone detail sync runner (bypasses API auth)
 ```
@@ -236,7 +252,7 @@ ANTHROPIC_API_KEY         # Claude Vision & enrichment
 - `synced_at` = when the record was last upserted from bulk list endpoint
 - `detail_synced_at` = when individual detail was last successfully fetched. Null = needs (re)fetch.
 - SSE streaming used for long-running sync to prevent serverless timeout (maxDuration = 300s)
-- Auth: Supabase Auth with email/password. Roles: admin, staff, viewer. RLS policies enforce access.
+- Auth: Supabase Auth with email/password + required TOTP MFA. Roles: admin, staff, viewer. RLS policies enforce access.
 - Supabase PostgREST cannot do column-to-column comparisons in filters (e.g., `detail_synced_at.lt.synced_at` treats `synced_at` as a literal string)
 
 ## Push Notifications
@@ -247,6 +263,83 @@ curl -X POST https://api.getmoshi.app/api/webhook \
   -H "Content-Type: application/json" \
   -d '{"token": "6vFtVgUWzKlv2T2Rf9xj7lDHdCJmuv27", "title": "Done", "message": "Brief summary"}'
 ```
+
+## Trigger.dev (Background Jobs)
+
+**Project:** `proj_wsrzyiheommabomneukx`
+**Config:** `trigger.config.ts` → reads tasks from `./src/trigger`
+**SDK:** `@trigger.dev/sdk` v4 (uses v3 API imports from `@trigger.dev/sdk/v3`)
+
+### Tasks
+
+**`scheduled-sync`** — Runs every 2 hours (`0 */2 * * *`). Incremental sync of artworks, artists, contacts from Arternal. Logs to `sync_log` with `triggered_by: null`. If new artworks were created, automatically triggers `analyze-new-artworks`.
+
+**`analyze-new-artworks`** — Triggered after sync when new artworks exist. Finds artworks in `artworks_extended` where `vision_analyzed_at IS NULL`, runs Claude Vision analysis + CLIP embedding + description embedding on each. Rate limited to 1 artwork per 2 seconds.
+
+### Development
+```bash
+npx trigger.dev@latest dev     # Run trigger tasks locally
+npx trigger.dev@latest deploy  # Deploy to Trigger.dev cloud
+```
+
+### Environment
+Add `TRIGGER_SECRET_KEY` to `.env.local` and Vercel env vars. The key comes from the Trigger.dev dashboard.
+
+## Deployment
+
+**Production:** `https://roomservice-tools.vercel.app`
+**Vercel project:** `roomservice-tools` (Framework Preset must be set to **Next.js**)
+**ESLint:** Disabled during builds (`eslint.ignoreDuringBuilds: true` in next.config.ts) due to flat config incompatibility with Vercel
+
+Environment variables are set in Vercel project settings (same as `.env.local`). Also set `NEXT_PUBLIC_SITE_URL=https://roomservice-tools.vercel.app`.
+
+## Authentication & MFA
+
+### Flow
+1. **Login** → email/password → session at `aal1`
+2. **No MFA enrolled** → middleware redirects to `/mfa/setup` (forced TOTP enrollment via QR code)
+3. **MFA enrolled, not verified** → middleware redirects to `/mfa/verify` (enter TOTP code)
+4. **MFA verified** (`aal2`) → full app access
+
+### Invited Users Flow
+1. Admin invites user from `/admin/users` → `inviteUserByEmail()` sends email
+2. User clicks "Accept Invite" → `/auth/confirm` exchanges `token_hash` via `verifyOtp()` → session created
+3. Redirect to `/set-password` → user sets password via `updateUser({ password })`
+4. Redirect to `/mfa/setup` → user enrolls TOTP
+5. After MFA setup → full app access
+
+### Middleware (`src/middleware.ts`)
+- Allows `/login`, `/`, `/set-password` without auth
+- Authenticated users: checks AAL level
+  - `nextLevel === "aal1"` (no MFA) → redirect `/mfa/setup`
+  - `currentLevel === "aal1"` && `nextLevel === "aal2"` (MFA not verified) → redirect `/mfa/verify`
+  - Already `aal2` on MFA pages → redirect `/`
+
+### Key Supabase MFA APIs
+- `mfa.enroll({ factorType: 'totp' })` — returns QR code SVG + secret
+- `mfa.challengeAndVerify({ factorId, code })` — verify a TOTP code
+- `mfa.listFactors()` — get enrolled factors (use `factorsData.all` with `(f.status as string)` cast for type safety)
+- `mfa.unenroll({ factorId })` — remove a factor (used in re-enrollment)
+- `mfa.getAuthenticatorAssuranceLevel()` — returns `{ currentLevel, nextLevel }`
+
+### Settings Page (`/settings`)
+- **MFA re-enrollment:** Cannot disable MFA (required). Can re-enroll to new device: verify current TOTP → unenroll old → enroll new → verify new code
+- **Change password:** Verifies current password via `signInWithPassword()` before allowing `updateUser({ password })`
+
+### Admin User Management (`/admin/users`)
+- **Invite:** Email-based via `inviteUserByEmail()` with `redirectTo` pointing to `/auth/confirm?next=/set-password`
+- **Role change:** PUT `/api/admin/users` — admin, staff, viewer. Cannot change own role.
+- **Delete:** DELETE `/api/admin/users` — deletes profile then auth user. Cannot delete self.
+
+### Email Templates
+Branded HTML templates pushed to Supabase via Management API. Templates in `docs/email-templates.md`.
+- Invite User (uses `{{ .TokenHash }}` for SSR callback)
+- Confirm Sign Up, Reset Password, Magic Link, Change Email, Reauthentication (use `{{ .ConfirmationURL }}`)
+
+### Supabase URL Configuration
+- **Site URL:** `https://roomservice-tools.vercel.app`
+- **Redirect URLs:** `https://roomservice-tools.vercel.app/**`, `http://localhost:3002/**`
+- Free tier email rate limit: ~3-4 emails/hour. Consider custom SMTP (Resend, SendGrid) for production.
 
 ## Current Data Counts
 - Artworks: 2,236 (2,233 with detail, 2,226 with images)

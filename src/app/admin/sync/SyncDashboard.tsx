@@ -26,6 +26,7 @@ interface SyncDashboardProps {
   };
   lastSyncs: Record<string, SyncLogEntry | null>;
   recentLogs: SyncLogEntry[];
+  lastScheduledSync: SyncLogEntry | null;
 }
 
 type EntityType = "artworks" | "artists" | "contacts";
@@ -46,6 +47,7 @@ export default function SyncDashboard({
   counts,
   lastSyncs,
   recentLogs,
+  lastScheduledSync,
 }: SyncDashboardProps) {
   const router = useRouter();
   const supabase = createClient();
@@ -55,6 +57,8 @@ export default function SyncDashboard({
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [activeEntity, setActiveEntity] = useState<string | null>(null);
   const pauseRef = useRef(false);
+  const [triggerLoading, setTriggerLoading] = useState<string | null>(null);
+  const [triggerResult, setTriggerResult] = useState<string | null>(null);
 
   async function handleSync(entity: EntityType) {
     pauseRef.current = false;
@@ -212,6 +216,29 @@ export default function SyncDashboard({
     pauseRef.current = true;
   }
 
+  async function handleTrigger(taskName: "sync" | "analyze") {
+    setTriggerLoading(taskName);
+    setTriggerResult(null);
+    try {
+      const res = await fetch("/api/trigger/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task: taskName === "analyze" ? "analyze" : "sync" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setTriggerResult(`Error: ${data.error}`);
+      } else {
+        setTriggerResult(`Triggered ${data.triggered} (run: ${data.id})`);
+        router.refresh();
+      }
+    } catch (e) {
+      setTriggerResult(`Error: ${String(e)}`);
+    } finally {
+      setTriggerLoading(null);
+    }
+  }
+
   function formatDate(dateStr: string | null | undefined): string {
     if (!dateStr) return "Never";
     return new Date(dateStr).toLocaleString();
@@ -271,9 +298,67 @@ export default function SyncDashboard({
         ))}
       </div>
 
-      {/* Sync Controls */}
+      {/* Scheduled Sync (Trigger.dev) */}
+      <div className="mb-8 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Background Sync</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Incremental sync runs automatically every 2 hours via Trigger.dev.
+              New artworks are auto-analyzed (vision + embeddings).
+            </p>
+          </div>
+          <StatusBadge status="active" />
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="rounded-md bg-gray-50 p-3">
+            <p className="text-xs font-medium text-gray-500">Last Scheduled Sync</p>
+            <p className="mt-1 text-sm font-medium text-gray-900">
+              {lastScheduledSync
+                ? formatDate(lastScheduledSync.started_at)
+                : "Not yet run"}
+            </p>
+            {lastScheduledSync && (
+              <p className="mt-0.5 text-xs text-gray-500">
+                Status: {lastScheduledSync.status}
+                {lastScheduledSync.records_processed > 0 &&
+                  ` — ${lastScheduledSync.records_processed} processed`}
+              </p>
+            )}
+          </div>
+          <div className="flex items-end gap-2">
+            <button
+              onClick={() => handleTrigger("sync")}
+              disabled={triggerLoading !== null}
+              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {triggerLoading === "sync" && <Spinner />}
+              Trigger Sync Now
+            </button>
+            <button
+              onClick={() => handleTrigger("analyze")}
+              disabled={triggerLoading !== null}
+              className="inline-flex items-center gap-2 rounded-lg border border-indigo-600 bg-white px-4 py-2 text-sm font-medium text-indigo-600 shadow-sm transition-colors hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {triggerLoading === "analyze" && <Spinner />}
+              Run Analysis
+            </button>
+          </div>
+        </div>
+        {triggerResult && (
+          <p
+            className={`mt-3 text-sm ${
+              triggerResult.startsWith("Error") ? "text-red-600" : "text-green-700"
+            }`}
+          >
+            {triggerResult}
+          </p>
+        )}
+      </div>
+
+      {/* Manual Sync Controls */}
       <div className="mb-8">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Trigger Sync</h2>
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Manual Sync</h2>
 
         {/* Mode Toggle */}
         <div className="mb-4 flex items-center gap-4">
@@ -474,6 +559,7 @@ function StatusBadge({ status }: { status: string }) {
     completed: "bg-green-100 text-green-800",
     running: "bg-blue-100 text-blue-800",
     error: "bg-red-100 text-red-800",
+    active: "bg-green-100 text-green-800",
   };
 
   return (

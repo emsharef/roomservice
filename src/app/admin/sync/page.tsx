@@ -49,6 +49,16 @@ export default async function SyncPage() {
     .order("started_at", { ascending: false })
     .limit(10);
 
+  // Fetch last scheduled sync (triggered_by is null = scheduled/background)
+  const { data: lastScheduledSync } = await admin
+    .from("sync_log")
+    .select("*")
+    .is("triggered_by", null)
+    .eq("entity_type", "all")
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .single();
+
   return (
     <SyncDashboard
       counts={{
@@ -58,6 +68,7 @@ export default async function SyncPage() {
       }}
       lastSyncs={lastSyncs}
       recentLogs={(recentLogs as SyncLogEntry[]) ?? []}
+      lastScheduledSync={(lastScheduledSync as SyncLogEntry) ?? null}
     />
   );
 }
