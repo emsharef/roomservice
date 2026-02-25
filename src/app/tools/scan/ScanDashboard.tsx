@@ -168,9 +168,8 @@ export default function ScanDashboard({
   async function handleBatchSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    e.target.value = "";
-
     const fileList = Array.from(files);
+    e.target.value = "";
     setBatchProcessing(true);
     setBatchTotal(fileList.length);
     setBatchDone(0);
