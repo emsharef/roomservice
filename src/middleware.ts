@@ -48,6 +48,11 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // Allow auth confirm callback (invite token exchange) without auth
+  if (request.nextUrl.pathname === "/auth/confirm") {
+    return supabaseResponse;
+  }
+
   // Redirect to landing page if not authenticated
   if (!user) {
     return NextResponse.redirect(new URL("/", request.url));
