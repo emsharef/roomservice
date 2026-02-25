@@ -159,6 +159,7 @@ export async function POST(request: NextRequest) {
         primary_state: cardData.state,
         primary_zip: cardData.zip,
         primary_country: cardData.country,
+        notes: cardData.notes || [],
         source_images: images,
         ocr_raw_response: cardData,
         ocr_confidence: cardData.confidence,

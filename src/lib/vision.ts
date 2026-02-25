@@ -28,6 +28,7 @@ export interface BusinessCardData {
   state: string | null;
   zip: string | null;
   country: string | null;
+  notes: string[]; // extra info that doesn't fit standard fields
   confidence: "high" | "medium" | "low";
 }
 
@@ -68,7 +69,7 @@ export async function scanBusinessCard(
           ...imageBlocks,
           {
             type: "text",
-            text: `Extract contact information from this business card.${images.length > 1 ? " Two images are provided — they are the front and back of the same card. Combine information from both sides." : ""}
+            text: `Extract ALL information from this business card — do not skip anything.${images.length > 1 ? " Two images are provided — they are the front and back of the same card. Combine information from both sides." : ""}
 
 Return a JSON object with these fields:
 - "first_name": string or null
@@ -77,13 +78,24 @@ Return a JSON object with these fields:
 - "phone": string or null (primary/office phone)
 - "phone_mobile": string or null (mobile/cell phone, if a separate number is listed)
 - "company": string or null
-- "website": string or null
+- "website": string or null — if no website URL is present but a social media handle/URL is, use the most prominent social profile URL here (e.g. "https://instagram.com/handle")
 - "title": string or null (job title, e.g. "Gallery Director", "Curator")
 - "street": string or null
 - "city": string or null
 - "state": string or null
 - "zip": string or null
 - "country": string or null
+- "notes": array of strings — capture EVERYTHING else on the card that doesn't fit the fields above. Use this format for each entry:
+  - Social media: "Instagram: @handle", "Twitter: @handle", "LinkedIn: linkedin.com/in/name", "Facebook: fb.com/page"
+  - Secondary address: "Address 2: 123 Other St, City, State ZIP"
+  - Secondary email: "Email 2: other@example.com"
+  - Secondary phone: "Phone 2: +1-555-0100"
+  - Fax: "Fax: +1-555-0199"
+  - Credentials/degrees: "Credentials: MBA, CFA"
+  - Tagline/motto: "Tagline: Contemporary Art for Modern Spaces"
+  - QR code or other info: "QR: [description of what it appears to link to]"
+  - Anything else: "Other: [description]"
+  Return an empty array [] if all info fits in the fields above.
 - "confidence": "high" if text is clearly legible and fields are unambiguous, "medium" if some fields are uncertain, "low" if significant guessing was required
 
 Return ONLY valid JSON, no markdown code fences, no other text.`,
