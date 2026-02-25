@@ -128,7 +128,7 @@ function LandingPage() {
         />
         <p className="mt-4 max-w-lg text-center text-base text-gray-500 sm:text-lg leading-relaxed">
           The AI-powered companion for gallery management.
-          <br className="hidden sm:block" />
+          <br />
           Sync, enrich, and search your collection.
         </p>
 
