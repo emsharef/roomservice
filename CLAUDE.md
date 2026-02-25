@@ -272,18 +272,25 @@ curl -X POST https://api.getmoshi.app/api/webhook \
 
 ### Tasks
 
-**`scheduled-sync`** — Runs every 2 hours (`0 */2 * * *`). Incremental sync of artworks, artists, contacts from Arternal. Logs to `sync_log` with `triggered_by: null`. If new artworks were created, automatically triggers `analyze-new-artworks`.
+**`scheduled-sync`** — Runs every 2 hours (`0 */2 * * *`). Incremental sync of artworks, artists, contacts from Arternal. Looks up last successful sync timestamp from `sync_log` and passes `updatedSince` so the Arternal API fetch stops early when hitting old records. Logs to `sync_log` with `triggered_by: null`. If new artworks were created, automatically triggers `analyze-new-artworks`.
 
 **`analyze-new-artworks`** — Triggered after sync when new artworks exist. Finds artworks in `artworks_extended` where `vision_analyzed_at IS NULL`, runs Claude Vision analysis + CLIP embedding + description embedding on each. Rate limited to 1 artwork per 2 seconds.
 
-### Development
+### Manual Trigger API
+
+`POST /api/trigger/sync` — Auth-gated (admin/staff). Body: `{ task: "sync" }` or `{ task: "analyze" }`. Triggers background tasks via Trigger.dev. Returns `{ triggered, id }`. The sync dashboard has "Trigger Sync Now" and "Run Analysis" buttons that call this endpoint.
+
+### Development & Deployment
 ```bash
-npx trigger.dev@latest dev     # Run trigger tasks locally
-npx trigger.dev@latest deploy  # Deploy to Trigger.dev cloud
+npx trigger.dev@latest dev     # Run trigger tasks locally (connects to dev environment)
+npx trigger.dev@latest deploy  # Deploy to Trigger.dev cloud (production)
 ```
 
 ### Environment
-Add `TRIGGER_SECRET_KEY` to `.env.local` and Vercel env vars. The key comes from the Trigger.dev dashboard.
+- **Dev key** (`tr_dev_...`): Used in `.env.local` for local development with `npx trigger.dev dev`
+- **Prod key** (`tr_prod_...`): Used in Vercel env vars. Found in Trigger.dev dashboard under Production environment → API Keys
+- Add as `TRIGGER_SECRET_KEY` in both places
+- The middleware excludes `/api/trigger` from auth matching (see `matcher` in `src/middleware.ts`)
 
 ## Deployment
 
