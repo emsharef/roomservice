@@ -1356,11 +1356,29 @@ function MobileContactCard({
               <p className="truncate font-medium text-gray-900">
                 {contact.display_name || "\u2014"}
               </p>
+              {contact.type && (
+                <p className="truncate text-sm text-gray-500">{contact.type}</p>
+              )}
+              {contact.company && contact.company !== contact.display_name && (
+                <p className="truncate text-sm text-gray-500">{contact.company}</p>
+              )}
               {contact.email && (
                 <p className="truncate text-sm text-gray-500">{contact.email}</p>
               )}
-              {contact.company && (
-                <p className="truncate text-sm text-gray-500">{contact.company}</p>
+              {(contact.phone || contact.phone_mobile) && (
+                <p className="truncate text-sm text-gray-500">
+                  {contact.phone || contact.phone_mobile}
+                </p>
+              )}
+              {contact.website && (
+                <p className="truncate text-sm text-gray-500">{contact.website}</p>
+              )}
+              {contact.primary_city && (
+                <p className="truncate text-sm text-gray-400">
+                  {[contact.primary_city, contact.primary_state, contact.primary_country]
+                    .filter(Boolean)
+                    .join(", ")}
+                </p>
               )}
             </div>
 
