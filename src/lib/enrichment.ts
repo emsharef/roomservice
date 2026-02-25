@@ -310,6 +310,9 @@ export async function enrichContact(
 export interface ArtistEnrichment {
   summary: string;
   formatted_bio: string;
+  birth_year: number | null;
+  death_year: number | null;
+  country: string | null;
   artistic_practice: {
     philosophy: string;
     process: string;
@@ -413,6 +416,7 @@ Focus on:
 - Do not fabricate — if information is limited, say so
 - Write the formatted_bio as a gallery-quality narrative biography (3-5 paragraphs), not a list of facts. Ground it in sourced information with inline citations.
 - The artistic_practice section is the most important — go deep on philosophy, process, and themes, but only based on what you actually found
+- For birth_year, death_year, and country: extract these from your research if found. Use integer years (e.g. 1985), null if unknown. Country should be where the artist is primarily based (e.g. "United States", "United Kingdom", "Italy"). Use null if not found.
 
 ## Output Format
 Return a JSON object with these fields:
@@ -420,6 +424,9 @@ Return a JSON object with these fields:
 {
   "summary": "2-3 sentence overview of this artist and their significance",
   "formatted_bio": "Gallery-quality narrative biography with inline citations [1][2]. 3-5 paragraphs, third person, present tense for living artists.",
+  "birth_year": 1985,
+  "death_year": null,
+  "country": "United States",
   "artistic_practice": {
     "philosophy": "The artist's creative vision and conceptual framework, with inline citations [N]. Ground in their own words from interviews or statements.",
     "process": "How they work — materials, techniques, studio practice, with inline citations [N]. Based on interviews, studio visits, or exhibition texts.",
