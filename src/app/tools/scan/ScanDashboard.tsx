@@ -89,6 +89,8 @@ export default function ScanDashboard({
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState<Set<string>>(new Set());
   const [expandedDupId, setExpandedDupId] = useState<string | null>(null);
+  const [showTagInput, setShowTagInput] = useState(false);
+  const [batchTagValue, setBatchTagValue] = useState("");
 
   // Convert file to base64
   const fileToBase64 = useCallback(
@@ -360,6 +362,45 @@ export default function ScanDashboard({
       }
     }
     setSelectedIds(new Set());
+  }
+
+  // Tag selected (batch)
+  async function handleTagSelected() {
+    const newTags = batchTagValue
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    if (newTags.length === 0) return;
+
+    const draftIds = [...selectedIds].filter((id) => {
+      const contact = contacts.find((c) => c.id === id);
+      return contact?.status === "draft";
+    });
+
+    for (const id of draftIds) {
+      const contact = contacts.find((c) => c.id === id);
+      if (!contact) continue;
+      const existingTags = contact.tags || [];
+      const merged = [...new Set([...existingTags, ...newTags])];
+
+      try {
+        const res = await fetch(`/api/scan/staged/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tags: merged }),
+        });
+        if (!res.ok) continue;
+        const data = await res.json();
+        setContacts((prev) =>
+          prev.map((c) => (c.id === id ? data.staged_contact : c)),
+        );
+      } catch {
+        // continue with remaining
+      }
+    }
+
+    setBatchTagValue("");
+    setShowTagInput(false);
   }
 
   // Toggle selection
@@ -664,6 +705,66 @@ export default function ScanDashboard({
                 </svg>
                 Delete Selected ({selectedDraftCount})
               </button>
+              {showTagInput ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={batchTagValue}
+                    onChange={(e) => setBatchTagValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleTagSelected();
+                      if (e.key === "Escape") {
+                        setShowTagInput(false);
+                        setBatchTagValue("");
+                      }
+                    }}
+                    placeholder="e.g. Art Basel 2026, VIP"
+                    autoFocus
+                    className="w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+                  />
+                  <button
+                    onClick={handleTagSelected}
+                    disabled={!batchTagValue.trim()}
+                    className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 disabled:opacity-50"
+                  >
+                    Apply
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowTagInput(false);
+                      setBatchTagValue("");
+                    }}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowTagInput(true)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M6 6h.008v.008H6V6z"
+                    />
+                  </svg>
+                  Tag ({selectedDraftCount})
+                </button>
+              )}
               <button
                 onClick={handleApproveSelected}
                 className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-green-700"
