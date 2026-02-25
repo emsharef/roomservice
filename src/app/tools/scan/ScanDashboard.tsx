@@ -685,10 +685,10 @@ export default function ScanDashboard({
             </span>
           </h2>
           {selectedDraftCount > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={handleDeleteSelected}
-                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-700"
+                className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-700"
               >
                 <svg
                   className="h-4 w-4"
@@ -742,7 +742,7 @@ export default function ScanDashboard({
               ) : (
                 <button
                   onClick={() => setShowTagInput(true)}
-                  className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+                  className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
                 >
                   <svg
                     className="h-4 w-4"
@@ -767,7 +767,7 @@ export default function ScanDashboard({
               )}
               <button
                 onClick={handleApproveSelected}
-                className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-green-700"
+                className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-green-700"
               >
                 <svg
                   className="h-4 w-4"
