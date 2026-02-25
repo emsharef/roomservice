@@ -67,12 +67,19 @@ export default function ScanDashboard({
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backFileInputRef = useRef<HTMLInputElement>(null);
+  const batchFileInputRef = useRef<HTMLInputElement>(null);
 
   // Scan state
   const [frontImage, setFrontImage] = useState<string | null>(null);
   const [backImage, setBackImage] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+
+  // Batch state
+  const [batchProcessing, setBatchProcessing] = useState(false);
+  const [batchTotal, setBatchTotal] = useState(0);
+  const [batchDone, setBatchDone] = useState(0);
+  const [batchErrors, setBatchErrors] = useState<string[]>([]);
 
   // List state
   const [contacts, setContacts] = useState<StagedContact[]>(initialContacts);
@@ -155,6 +162,43 @@ export default function ScanDashboard({
     setFrontImage(null);
     setBackImage(null);
     setScanError(null);
+  }
+
+  // Batch: select multiple photos
+  async function handleBatchSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    e.target.value = "";
+
+    const fileList = Array.from(files);
+    setBatchProcessing(true);
+    setBatchTotal(fileList.length);
+    setBatchDone(0);
+    setBatchErrors([]);
+
+    for (let i = 0; i < fileList.length; i++) {
+      try {
+        const base64 = await fileToBase64(fileList[i]);
+        const res = await fetch("/api/scan/ocr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ images: [base64] }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({ error: "Unknown error" }));
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        setContacts((prev) => [data.staged_contact, ...prev]);
+      } catch (err) {
+        setBatchErrors((prev) => [...prev, `${fileList[i].name}: ${err}`]);
+      }
+      setBatchDone(i + 1);
+    }
+
+    setBatchProcessing(false);
   }
 
   // Start editing
@@ -357,32 +401,113 @@ export default function ScanDashboard({
       <div className="mb-8 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-lg font-semibold text-gray-900">Scan Card</h2>
 
-        {!frontImage ? (
-          <div>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800"
-            >
+        {/* Batch progress banner */}
+        {batchProcessing && (
+          <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 p-4">
+            <div className="flex items-center gap-3">
               <svg
-                className="h-5 w-5"
+                className="h-5 w-5 animate-spin text-blue-600"
                 fill="none"
-                stroke="currentColor"
                 viewBox="0 0 24 24"
-                strokeWidth={1.5}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
                 />
                 <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z"
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                 />
               </svg>
-              Scan Card
+              <div className="flex-1">
+                <p className="text-sm font-medium text-blue-800">
+                  Processing cards... {batchDone} of {batchTotal}
+                </p>
+                <div className="mt-1.5 h-1.5 w-full rounded-full bg-blue-200">
+                  <div
+                    className="h-1.5 rounded-full bg-blue-600 transition-all"
+                    style={{ width: `${(batchDone / batchTotal) * 100}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Batch errors */}
+        {!batchProcessing && batchErrors.length > 0 && (
+          <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-medium text-amber-800">
+              {batchErrors.length} card{batchErrors.length === 1 ? "" : "s"} failed to process:
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {batchErrors.map((err, i) => (
+                <li key={i} className="text-xs text-amber-700">{err}</li>
+              ))}
+            </ul>
+            <button
+              onClick={() => setBatchErrors([])}
+              className="mt-2 text-xs font-medium text-amber-600 hover:text-amber-800"
+            >
+              Dismiss
             </button>
+          </div>
+        )}
+
+        {!frontImage ? (
+          <div>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={batchProcessing}
+                className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 disabled:opacity-50"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z"
+                  />
+                </svg>
+                Scan Card
+              </button>
+              <button
+                onClick={() => batchFileInputRef.current?.click()}
+                disabled={batchProcessing}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-50"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z"
+                  />
+                </svg>
+                Load Photos
+              </button>
+            </div>
             <input
               ref={fileInputRef}
               type="file"
@@ -391,8 +516,16 @@ export default function ScanDashboard({
               className="hidden"
               onChange={handleFrontCapture}
             />
+            <input
+              ref={batchFileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleBatchSelect}
+            />
             <p className="mt-2 text-xs text-gray-400">
-              Take a photo or upload an image of the front of a business card
+              Scan a single card, or load multiple photos to process a batch
             </p>
           </div>
         ) : (
