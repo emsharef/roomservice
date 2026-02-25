@@ -49,10 +49,10 @@ export async function POST(request: NextRequest) {
     // OCR via Claude Vision
     const cardData = await scanBusinessCard(images, mediaType || "image/jpeg");
 
-    // Build display_name
+    // Build display_name — fall back to company if no person name
     const displayName = [cardData.first_name, cardData.last_name]
       .filter(Boolean)
-      .join(" ") || "Unknown";
+      .join(" ") || cardData.company || "Unknown";
 
     // Duplicate detection: check contacts table by name and email
     const duplicateCandidates: Array<{
