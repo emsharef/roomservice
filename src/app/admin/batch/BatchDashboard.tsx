@@ -11,6 +11,8 @@ interface BatchStats {
   analyzed: number;
   collectors: number;
   collectorsEnriched: number;
+  artists: number;
+  artistsEnriched: number;
 }
 
 interface ErrorEntry {
@@ -21,7 +23,7 @@ interface ErrorEntry {
 
 interface BatchProgress {
   running: boolean;
-  type: "embed" | "analyze" | "enrich" | null;
+  type: "embed" | "analyze" | "enrich" | "enrich-artist" | null;
   current: number;
   total: number;
   currentItem: string;
@@ -320,6 +322,90 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
     router.refresh();
   }
 
+  async function runArtistEnrichBatch() {
+    pauseRef.current = false;
+
+    // Fetch artists from artists_extended
+    let query = supabase
+      .from("artists_extended")
+      .select("artist_id");
+
+    if (mode === "incremental") {
+      query = query.is("enrichment_brief", null);
+    }
+
+    const { data: artists } = await query.order("artist_id").limit(10000);
+
+    if (!artists || artists.length === 0) return;
+
+    // Fetch display names for progress display
+    const artistIds = artists.map((a) => a.artist_id);
+    const { data: artistNames } = await supabase
+      .from("artists")
+      .select("id, display_name")
+      .in("id", artistIds);
+
+    const nameMap = new Map(
+      (artistNames ?? []).map((a) => [a.id, a.display_name]),
+    );
+
+    setProgress({
+      running: true,
+      type: "enrich-artist",
+      current: 0,
+      total: artists.length,
+      currentItem: "",
+      startedAt: new Date(),
+      errors: [],
+    });
+
+    for (let i = 0; i < artists.length; i++) {
+      if (pauseRef.current) break;
+
+      const artistId = artists[i].artist_id;
+      const name = nameMap.get(artistId) || `Artist ${artistId}`;
+
+      setProgress((prev) => ({
+        ...prev,
+        current: i + 1,
+        currentItem: name,
+      }));
+
+      try {
+        const res = await fetch("/api/enrich/artist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ artistId }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({ error: "Unknown error" }));
+          setProgress((prev) => ({
+            ...prev,
+            errors: [
+              ...prev.errors,
+              { artworkId: artistId, title: name, error: data.error || `HTTP ${res.status}` },
+            ],
+          }));
+        }
+      } catch (e) {
+        setProgress((prev) => ({
+          ...prev,
+          errors: [
+            ...prev.errors,
+            { artworkId: artistId, title: name, error: String(e) },
+          ],
+        }));
+      }
+
+      // Longer delay — web search with more max_uses
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    setProgress((prev) => ({ ...prev, running: false }));
+    router.refresh();
+  }
+
   async function retryFailed() {
     if (progress.errors.length === 0 || !progress.type) return;
 
@@ -342,7 +428,9 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
         ? "/api/embed"
         : type === "analyze"
           ? "/api/analyze"
-          : "/api/enrich/contact";
+          : type === "enrich-artist"
+            ? "/api/enrich/artist"
+            : "/api/enrich/contact";
 
     for (let i = 0; i < failedItems.length; i++) {
       if (pauseRef.current) break;
@@ -358,7 +446,9 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
         const body =
           type === "enrich"
             ? { contactId: item.artworkId }
-            : { artworkId: item.artworkId };
+            : type === "enrich-artist"
+              ? { artistId: item.artworkId }
+              : { artworkId: item.artworkId };
 
         const res = await fetch(endpoint, {
           method: "POST",
@@ -386,7 +476,7 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
         }));
       }
 
-      const delay = type === "enrich" ? 2000 : type === "analyze" ? 1000 : 300;
+      const delay = type === "enrich" || type === "enrich-artist" ? 2000 : type === "analyze" ? 1000 : 300;
       await new Promise((r) => setTimeout(r, delay));
     }
 
@@ -429,20 +519,25 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
   const embedRemaining = stats.withImages - stats.embedded;
   const analyzeRemaining = stats.withImages - stats.analyzed;
   const enrichRemaining = stats.collectors - stats.collectorsEnriched;
+  const artistEnrichRemaining = stats.artists - stats.artistsEnriched;
 
   const progressLabel =
     progress.type === "embed"
       ? "CLIP Embeddings"
       : progress.type === "analyze"
         ? "Vision Analysis"
-        : "Contact Enrichment";
+        : progress.type === "enrich-artist"
+          ? "Artist Enrichment"
+          : "Contact Enrichment";
 
   const progressColor =
     progress.type === "embed"
       ? "bg-blue-600"
       : progress.type === "analyze"
         ? "bg-purple-600"
-        : "bg-emerald-600";
+        : progress.type === "enrich-artist"
+          ? "bg-amber-600"
+          : "bg-emerald-600";
 
   return (
     <div>
@@ -483,7 +578,7 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
       </div>
 
       {/* Stats Cards */}
-      <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
+      <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {/* CLIP Embeddings Card */}
         <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-gray-900">CLIP Embeddings</h3>
@@ -604,6 +699,40 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
             {mode === "full" ? "Re-enrich All" : "Start Enrichment"}
           </button>
         </div>
+
+        {/* Artist Enrichment Card */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-gray-900">Artist Enrichment</h3>
+          <div className="mt-3 space-y-1">
+            <p className="text-sm text-gray-600">
+              <span className="text-2xl font-bold text-gray-900">
+                {stats.artistsEnriched.toLocaleString()}
+              </span>{" "}
+              of {stats.artists.toLocaleString()} complete
+            </p>
+            <p className="text-sm text-gray-500">
+              {artistEnrichRemaining.toLocaleString()} remaining
+            </p>
+          </div>
+          <div className="mt-3">
+            <div className="h-2.5 w-full rounded-full bg-gray-200">
+              <div
+                className="h-2.5 rounded-full bg-amber-600 transition-all duration-300"
+                style={{ width: `${getPercentage(stats.artistsEnriched, stats.artists)}%` }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-400">
+              {getPercentage(stats.artistsEnriched, stats.artists)}%
+            </p>
+          </div>
+          <button
+            onClick={runArtistEnrichBatch}
+            disabled={progress.running || (mode === "incremental" && artistEnrichRemaining === 0)}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {mode === "full" ? "Re-enrich All" : "Start Enrichment"}
+          </button>
+        </div>
       </div>
 
       {/* Progress Section */}
@@ -682,7 +811,7 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
             {progress.errors.map((err, idx) => (
               <li key={`${err.artworkId}-${idx}`} className="text-sm text-red-700">
                 <span className="font-medium">
-                  {progress.type === "enrich" ? "Contact" : "Artwork"} {err.artworkId}
+                  {progress.type === "enrich" ? "Contact" : progress.type === "enrich-artist" ? "Artist" : "Artwork"} {err.artworkId}
                 </span>{" "}
                 &ldquo;{err.title}&rdquo;:{" "}
                 <span className="text-red-600">{err.error}</span>

@@ -9,9 +9,12 @@ export default async function BatchPage() {
     withImagesResult,
     embeddedResult,
     analyzedResult,
-    // Enrichment stats
+    // Contact enrichment stats
     collectorsResult,
     enrichedResult,
+    // Artist enrichment stats
+    artistsResult,
+    artistsEnrichedResult,
   ] = await Promise.all([
     admin.from("artworks").select("*", { count: "exact", head: true }),
     admin
@@ -37,6 +40,15 @@ export default async function BatchPage() {
       .select("*", { count: "exact", head: true })
       .eq("classification", "collector")
       .not("collector_brief", "is", null),
+    // Total artists
+    admin
+      .from("artists_extended")
+      .select("*", { count: "exact", head: true }),
+    // Artists that have been enriched (have enrichment_brief)
+    admin
+      .from("artists_extended")
+      .select("*", { count: "exact", head: true })
+      .not("enrichment_brief", "is", null),
   ]);
 
   return (
@@ -48,6 +60,8 @@ export default async function BatchPage() {
         analyzed: analyzedResult.count ?? 0,
         collectors: collectorsResult.count ?? 0,
         collectorsEnriched: enrichedResult.count ?? 0,
+        artists: artistsResult.count ?? 0,
+        artistsEnriched: artistsEnrichedResult.count ?? 0,
       }}
     />
   );

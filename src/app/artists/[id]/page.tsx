@@ -3,6 +3,49 @@ import Link from "next/link";
 
 const ITEMS_PER_PAGE = 20;
 
+/** Render text with inline [N] citations as clickable superscript links */
+function CitedText({ text, sources }: { text: string; sources?: Array<{ url: string; title: string }> }) {
+  if (!sources || sources.length === 0) {
+    return <>{text}</>;
+  }
+
+  // Split on [N] or [N][M] patterns, keeping delimiters
+  const parts = text.split(/(\[\d+\](?:\[\d+\])*)/g);
+
+  return (
+    <>
+      {parts.map((part, i) => {
+        // Check if this part is a citation cluster like [1] or [1][2]
+        const citeMatches = part.match(/\[(\d+)\]/g);
+        if (citeMatches) {
+          return (
+            <span key={i}>
+              {citeMatches.map((cite, j) => {
+                const num = parseInt(cite.replace(/[[\]]/g, ""), 10);
+                const source = sources[num - 1]; // 1-based index
+                if (!source) return <sup key={j} className="text-xs text-gray-400">{cite}</sup>;
+                return (
+                  <a
+                    key={j}
+                    href={source.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={source.title}
+                    className="text-blue-600 hover:text-blue-800 hover:underline"
+                  >
+                    <sup className="text-xs font-medium">{cite}</sup>
+                  </a>
+                );
+              })}
+            </span>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
 export default async function ArtistDetailPage({
   params,
   searchParams,
@@ -26,7 +69,7 @@ export default async function ArtistDetailPage({
       .single(),
     supabase
       .from("artists_extended")
-      .select("enrichment_brief, formatted_bio, market_context, enrichment_status")
+      .select("enrichment_brief, formatted_bio, market_context, enrichment_status, enrichment_confidence, primary_mediums, style_tags, subject_tags, mood_tags")
       .eq("artist_id", artistId)
       .single(),
     supabase
@@ -161,46 +204,383 @@ export default async function ArtistDetailPage({
       </div>
 
       {/* Enrichment data from artists_extended */}
-      {extended && (extended.formatted_bio || extended.market_context || extended.enrichment_brief) && (
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mb-6">
-          <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">
-            AI Enrichment
-          </h2>
+      {extended && (extended.formatted_bio || extended.market_context || extended.enrichment_brief) && (() => {
+        const brief = extended.enrichment_brief as Record<string, unknown> | null;
+        const summary = brief?.summary as string | undefined;
+        const ap = brief?.artistic_practice as {
+          philosophy?: string; process?: string; themes?: string[];
+          evolution?: string; influences?: string[];
+        } | undefined;
+        const career = brief?.career as {
+          education?: string[]; solo_exhibitions?: string[];
+          group_exhibitions?: string[]; awards_grants?: string[];
+          residencies?: string[];
+        } | undefined;
+        const market = brief?.market as { auction_results?: string[] } | undefined;
+        const collections = brief?.collections as {
+          museum_collections?: string[]; notable_private_collections?: string[];
+        } | undefined;
+        const relatedArtists = (brief?.related_artists as string[] | undefined) ?? [];
+        const social = brief?.social_presence as { website?: string; instagram?: string; other?: string[] } | undefined;
+        const sources = brief?.sources as Array<{ url: string; title: string; relevance: string }> | undefined;
+        const researchNotes = brief?.notes as string | undefined;
 
-          {extended.formatted_bio && (
-            <div className="mb-4">
-              <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
-                Formatted Bio
-              </h3>
-              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
-                {extended.formatted_bio}
-              </p>
-            </div>
-          )}
+        const styleTags: string[] = extended.style_tags ?? [];
+        const subjectTags: string[] = extended.subject_tags ?? [];
+        const moodTags: string[] = extended.mood_tags ?? [];
+        const primaryMediums: string[] = extended.primary_mediums ?? [];
 
-          {extended.market_context && (
-            <div className="mb-4">
-              <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
-                Market Context
-              </h3>
-              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
-                {extended.market_context}
-              </p>
-            </div>
-          )}
+        const confidenceColor = {
+          high: "bg-green-100 text-green-800",
+          medium: "bg-yellow-100 text-yellow-800",
+          low: "bg-red-100 text-red-800",
+        }[extended.enrichment_confidence as string] ?? "bg-gray-100 text-gray-700";
 
-          {extended.enrichment_brief && typeof extended.enrichment_brief === "object" && (
-            <div className="mb-4">
-              <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
-                Enrichment Brief
-              </h3>
-              <pre className="text-sm text-gray-700 bg-gray-50 rounded p-3 overflow-x-auto">
-                {JSON.stringify(extended.enrichment_brief, null, 2)}
-              </pre>
+        return (
+          <div className="space-y-6 mb-6">
+            {/* Summary & Status Header */}
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Artist Research
+                </h2>
+                {extended.enrichment_confidence && (
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${confidenceColor}`}>
+                    {(extended.enrichment_confidence as string).charAt(0).toUpperCase() + (extended.enrichment_confidence as string).slice(1)} confidence
+                  </span>
+                )}
+              </div>
+              {summary && (
+                <p className="text-sm text-gray-700 leading-relaxed"><CitedText text={summary} sources={sources} /></p>
+              )}
             </div>
-          )}
-        </div>
-      )}
+
+            {/* Formatted Bio */}
+            {extended.formatted_bio && (
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+                <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+                  Biography
+                </h3>
+                <div className="text-sm text-gray-700 leading-relaxed space-y-3">
+                  {(extended.formatted_bio as string).split(/\n\n+/).map((para, i) => (
+                    <p key={i}><CitedText text={para} sources={sources} /></p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Artistic Practice */}
+            {ap && (ap.philosophy || ap.process || ap.themes?.length || ap.evolution) && (
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+                <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">
+                  Artistic Practice
+                </h3>
+                <div className="space-y-4">
+                  {ap.philosophy && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-1">Philosophy</p>
+                      <p className="text-sm text-gray-700 leading-relaxed"><CitedText text={ap.philosophy} sources={sources} /></p>
+                    </div>
+                  )}
+                  {ap.process && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-1">Process</p>
+                      <p className="text-sm text-gray-700 leading-relaxed"><CitedText text={ap.process} sources={sources} /></p>
+                    </div>
+                  )}
+                  {ap.themes && ap.themes.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-1">Recurring Themes</p>
+                      <ul className="space-y-1">
+                        {ap.themes.map((t, i) => (
+                          <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
+                            <span className="text-gray-300 mt-1 shrink-0">&bull;</span>
+                            {t}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {ap.evolution && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-1">Evolution</p>
+                      <p className="text-sm text-gray-700 leading-relaxed"><CitedText text={ap.evolution} sources={sources} /></p>
+                    </div>
+                  )}
+                  {ap.influences && ap.influences.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-2">Influences</p>
+                      <div className="flex flex-wrap gap-2">
+                        {ap.influences.map((inf) => (
+                          <span key={inf} className="inline-flex items-center rounded-full bg-gray-100 text-gray-700 px-3 py-1 text-sm">
+                            {inf}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Tags — style, subject, mood, mediums */}
+            {(styleTags.length > 0 || subjectTags.length > 0 || moodTags.length > 0 || primaryMediums.length > 0) && (
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+                <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">
+                  Classification
+                </h3>
+                <div className="space-y-4">
+                  {primaryMediums.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-2">Primary Mediums</p>
+                      <div className="flex flex-wrap gap-2">
+                        {primaryMediums.map((m) => (
+                          <span key={m} className="inline-flex items-center rounded-full bg-violet-50 text-violet-700 px-3 py-1 text-sm font-medium">
+                            {m}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {styleTags.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-2">Style</p>
+                      <div className="flex flex-wrap gap-2">
+                        {styleTags.map((s) => (
+                          <span key={s} className="inline-flex items-center rounded-full bg-sky-50 text-sky-700 px-3 py-1 text-sm">
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {subjectTags.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-2">Subject</p>
+                      <div className="flex flex-wrap gap-2">
+                        {subjectTags.map((s) => (
+                          <span key={s} className="inline-flex items-center rounded-full bg-amber-50 text-amber-700 px-3 py-1 text-sm">
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {moodTags.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-2">Mood</p>
+                      <div className="flex flex-wrap gap-2">
+                        {moodTags.map((m) => (
+                          <span key={m} className="inline-flex items-center rounded-full bg-rose-50 text-rose-700 px-3 py-1 text-sm">
+                            {m}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Related Artists */}
+            {relatedArtists.length > 0 && (
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+                <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+                  Related Artists
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {relatedArtists.map((a) => (
+                    <span key={a} className="inline-flex items-center rounded-full bg-violet-50 text-violet-700 px-3 py-1 text-sm font-medium">
+                      {a}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Career & Market — side by side */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Career */}
+              {career && (career.education?.length || career.solo_exhibitions?.length || career.group_exhibitions?.length || career.awards_grants?.length || career.residencies?.length) && (
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+                  <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+                    Career
+                  </h3>
+                  <div className="space-y-3">
+                    {career.education && career.education.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 mb-1">Education</p>
+                        <ul className="space-y-1">
+                          {career.education.map((e, i) => (
+                            <li key={i} className="text-sm text-gray-700">{e}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {career.solo_exhibitions && career.solo_exhibitions.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 mb-1">Solo Exhibitions</p>
+                        <ul className="space-y-1">
+                          {career.solo_exhibitions.map((e, i) => (
+                            <li key={i} className="text-sm text-gray-600">{e}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {career.group_exhibitions && career.group_exhibitions.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 mb-1">Group Exhibitions</p>
+                        <ul className="space-y-1">
+                          {career.group_exhibitions.map((e, i) => (
+                            <li key={i} className="text-sm text-gray-600">{e}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {career.awards_grants && career.awards_grants.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 mb-1">Awards & Grants</p>
+                        <ul className="space-y-1">
+                          {career.awards_grants.map((a, i) => (
+                            <li key={i} className="text-sm text-gray-700">{a}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {career.residencies && career.residencies.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 mb-1">Residencies</p>
+                        <ul className="space-y-1">
+                          {career.residencies.map((r, i) => (
+                            <li key={i} className="text-sm text-gray-700">{r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Market */}
+              {(extended.market_context || market?.auction_results?.length) && (
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+                  <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+                    Market
+                  </h3>
+                  {extended.market_context && (
+                    <p className="text-sm text-gray-700 leading-relaxed mb-3">{extended.market_context}</p>
+                  )}
+                  {market?.auction_results && market.auction_results.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-1">Auction Results</p>
+                      <ul className="space-y-1">
+                        {market.auction_results.map((r, i) => (
+                          <li key={i} className="text-sm text-gray-600">{r}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Collections */}
+            {collections && (collections.museum_collections?.length || collections.notable_private_collections?.length) && (
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+                <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+                  Collections
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {collections.museum_collections && collections.museum_collections.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-1">Museum Collections</p>
+                      <ul className="space-y-1">
+                        {collections.museum_collections.map((m, i) => (
+                          <li key={i} className="text-sm text-gray-700">{m}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {collections.notable_private_collections && collections.notable_private_collections.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-1">Notable Private Collections</p>
+                      <ul className="space-y-1">
+                        {collections.notable_private_collections.map((c, i) => (
+                          <li key={i} className="text-sm text-gray-700">{c}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Social & Sources — side by side */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Social Presence */}
+              {social && (social.website || social.instagram || (social.other && social.other.length > 0)) && (
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+                  <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+                    Social Presence
+                  </h3>
+                  <div className="space-y-2">
+                    {social.website && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-gray-500 w-20">Website</span>
+                        <a href={social.website.startsWith("http") ? social.website : `https://${social.website}`} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline truncate">
+                          {social.website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}
+                        </a>
+                      </div>
+                    )}
+                    {social.instagram && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-gray-500 w-20">Instagram</span>
+                        <span className="text-sm text-gray-700">{social.instagram}</span>
+                      </div>
+                    )}
+                    {social.other && social.other.map((o, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-gray-500 w-20">Other</span>
+                        <span className="text-sm text-gray-700">{o}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Sources */}
+              {sources && sources.length > 0 && (
+                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+                  <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+                    Sources ({sources.length})
+                  </h3>
+                  <ol className="space-y-2 list-none">
+                    {sources.map((s, i) => (
+                      <li key={i} className="text-sm flex items-start gap-2">
+                        <span className="text-xs font-medium text-blue-600 shrink-0 mt-0.5">[{i + 1}]</span>
+                        <div>
+                          <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                            {s.title}
+                          </a>
+                          <p className="text-xs text-gray-500 mt-0.5">{s.relevance}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
+
+            {/* Research Notes */}
+            {researchNotes && (
+              <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Research Notes</p>
+                <p className="text-sm text-gray-600">{researchNotes}</p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Works heading */}
       <p className="text-sm text-gray-500 mb-3">

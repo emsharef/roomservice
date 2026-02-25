@@ -282,21 +282,313 @@ export async function enrichContact(
   if (enrichment.collection_profile) {
     enrichment.collection_profile.style_preferences =
       (enrichment.collection_profile.style_preferences ?? []).filter((t) =>
-        styleTags.has(t.toLowerCase()),
+        t && styleTags.has(t.toLowerCase()),
       );
     enrichment.collection_profile.subject_preferences =
       (enrichment.collection_profile.subject_preferences ?? []).filter((t) =>
-        subjectTags.has(t.toLowerCase()),
+        t && subjectTags.has(t.toLowerCase()),
       );
     enrichment.collection_profile.mood_preferences =
       (enrichment.collection_profile.mood_preferences ?? []).filter((t) =>
-        moodTags.has(t.toLowerCase()),
+        t && moodTags.has(t.toLowerCase()),
       );
 
     // Clean known_artists: strip anything after the name (parenthetical notes, etc.)
     enrichment.collection_profile.known_artists =
       (enrichment.collection_profile.known_artists ?? []).map((a) =>
         a.replace(/\s*\(.*\)$/, "").trim(),
+      );
+  }
+
+  return enrichment;
+}
+
+// ---------------------------------------------------------------------------
+// Artist Enrichment
+// ---------------------------------------------------------------------------
+
+export interface ArtistEnrichment {
+  summary: string;
+  formatted_bio: string;
+  artistic_practice: {
+    philosophy: string;
+    process: string;
+    themes: string[];
+    evolution: string;
+    primary_mediums: string[];
+    style_tags: string[];
+    subject_tags: string[];
+    mood_tags: string[];
+    influences: string[];
+  };
+  career: {
+    education: string[];
+    solo_exhibitions: string[];
+    group_exhibitions: string[];
+    awards_grants: string[];
+    residencies: string[];
+  };
+  market: {
+    gallery_representation: string[];
+    auction_results: string[];
+    price_range: string;
+    market_trajectory: string;
+  };
+  collections: {
+    museum_collections: string[];
+    notable_private_collections: string[];
+  };
+  related_artists: string[];
+  social_presence: { website: string; instagram: string; other: string[] };
+  sources: Array<{ url: string; title: string; relevance: string }>;
+  confidence: "high" | "medium" | "low";
+  notes: string;
+}
+
+/** Build the enrichment prompt for an artist */
+function buildArtistPrompt(
+  artist: {
+    display_name: string;
+    first_name: string | null;
+    last_name: string | null;
+    bio: string | null;
+    country: string | null;
+    life_dates: string | null;
+    birth_year: string | null;
+    death_year: string | null;
+    work_count: number | null;
+  },
+  priceRange: { min: number | null; max: number | null },
+  artworkTags: { style: string[]; subject: string[]; mood: string[] },
+): string {
+  const lifeDates = artist.life_dates || [artist.birth_year, artist.death_year].filter(Boolean).join(" – ") || "Unknown";
+  const country = artist.country || "Unknown";
+  const bio = artist.bio || "None available";
+
+  const priceStr =
+    priceRange.min !== null && priceRange.max !== null
+      ? `$${priceRange.min.toLocaleString()} – $${priceRange.max.toLocaleString()}`
+      : priceRange.min !== null
+        ? `From $${priceRange.min.toLocaleString()}`
+        : "Unknown";
+
+  const artworkStyleTags = artworkTags.style.length > 0 ? artworkTags.style.join(", ") : "None analyzed yet";
+  const artworkSubjectTags = artworkTags.subject.length > 0 ? artworkTags.subject.join(", ") : "None analyzed yet";
+  const artworkMoodTags = artworkTags.mood.length > 0 ? artworkTags.mood.join(", ") : "None analyzed yet";
+
+  return `You are a research assistant for an art gallery called "${GALLERY_NAME}".
+Your task is to research an artist and compile a comprehensive profile using publicly available information.
+
+## Artist Information (from our CRM)
+- **Name:** ${artist.display_name}
+- **Country:** ${country}
+- **Life dates:** ${lifeDates}
+- **Bio from CRM:** ${bio}
+- **Works in inventory:** ${artist.work_count ?? 0}
+- **Price range in inventory:** ${priceStr}
+
+## Existing Vision Analysis Tags (from AI analysis of their works in our inventory)
+- **Style tags:** ${artworkStyleTags}
+- **Subject tags:** ${artworkSubjectTags}
+- **Mood tags:** ${artworkMoodTags}
+
+## Research Instructions
+Search for publicly available information about this artist. Prioritize understanding the artist as a thinker and maker, not just listing CV facts.
+
+Focus on:
+1. **Artistic practice** — artist statements, interviews, studio visit write-ups, critical essays, exhibition catalog texts. How do they describe their own intentions and process? What ideas, questions, or concerns motivate the practice? How has the work developed across different bodies of work / periods?
+2. **Career** — education, significant exhibitions (solo and group), awards, grants, residencies
+3. **Market context** — gallery representation, auction results, price trends, market trajectory
+4. **Collections** — museum collections, notable private collections
+5. **Related artists** — comparable artists for collector cross-referencing
+
+**Critical — source grounding and inline citations:**
+- ONLY write about things you found in your web search results. Do not draw on background knowledge to fill gaps.
+- Every claim in the formatted_bio, philosophy, process, and evolution fields must be traceable to a specific source you found. If you didn't find it in a source, don't include it.
+- **Use numbered inline citations** like [1], [2], [3] in the text fields. These numbers MUST correspond to the position (1-based) in YOUR "sources" array in the JSON output. So [1] means the first item in your sources array, [2] means the second, etc.
+- **IMPORTANT**: First compile your full sources list, then write the text using citation numbers that match that list. Do NOT use numbers from the web search result indices — only from your own output sources array. If you cite [5], there must be a 5th entry in your sources array.
+- Use citations liberally throughout formatted_bio, philosophy, process, and evolution. Every paragraph should have at least one citation. Every direct quote or paraphrase of the artist's words must have a citation.
+- If you can only find limited information about a topic (e.g., no interviews about process), say so explicitly rather than writing plausible-sounding filler. A shorter, well-sourced section is far more valuable than a longer speculative one.
+- Do not fabricate — if information is limited, say so
+- Write the formatted_bio as a gallery-quality narrative biography (3-5 paragraphs), not a list of facts. Ground it in sourced information with inline citations.
+- The artistic_practice section is the most important — go deep on philosophy, process, and themes, but only based on what you actually found
+
+## Output Format
+Return a JSON object with these fields:
+
+{
+  "summary": "2-3 sentence overview of this artist and their significance",
+  "formatted_bio": "Gallery-quality narrative biography with inline citations [1][2]. 3-5 paragraphs, third person, present tense for living artists.",
+  "artistic_practice": {
+    "philosophy": "The artist's creative vision and conceptual framework, with inline citations [N]. Ground in their own words from interviews or statements.",
+    "process": "How they work — materials, techniques, studio practice, with inline citations [N]. Based on interviews, studio visits, or exhibition texts.",
+    "themes": ["Recurring themes and concerns across their body of work"],
+    "evolution": "How the work has developed over time — key phases or shifts, with inline citations [N]",
+    "primary_mediums": ["painting", "sculpture", etc.],
+    "style_tags": ["tag1", "tag2"],
+    "subject_tags": ["tag1", "tag2"],
+    "mood_tags": ["tag1", "tag2"],
+    "influences": ["Artists, movements, thinkers that inform their work"]
+  },
+  "career": {
+    "education": ["Degree, Institution, Year"],
+    "solo_exhibitions": ["Exhibition Title, Venue, Year"],
+    "group_exhibitions": ["Exhibition Title, Venue, Year"],
+    "awards_grants": ["Award Name, Year"],
+    "residencies": ["Residency Name, Year"]
+  },
+  "market": {
+    "gallery_representation": ["Gallery Name, City"],
+    "auction_results": ["Brief description of notable auction results"],
+    "price_range": "Typical price range for their work",
+    "market_trajectory": "rising | mid-career | established | blue-chip | emerging"
+  },
+  "collections": {
+    "museum_collections": ["Museum Name, City"],
+    "notable_private_collections": ["Collection name if publicly known"]
+  },
+  "related_artists": ["Firstname Lastname"],
+  "social_presence": {
+    "website": "URL if found",
+    "instagram": "Handle if found",
+    "other": ["Other notable profiles"]
+  },
+  "sources": [
+    { "url": "https://...", "title": "Source title", "relevance": "What this source tells us" }
+  ],
+  "confidence": "high | medium | low",
+  "notes": "Any caveats about the research quality or information gaps"
+}
+
+### IMPORTANT formatting rules:
+
+**style_tags**: MUST use tags from this list ONLY: ${STYLE_TAGS.join(", ")}
+  Pick 3-8 tags that best describe this artist's style. Consider both the existing vision analysis tags above and your research findings.
+
+**subject_tags**: MUST use tags from this list ONLY: ${SUBJECT_TAGS.join(", ")}
+  Pick 2-6 tags that describe the subject matter in this artist's work.
+
+**mood_tags**: MUST use tags from this list ONLY: ${MOOD_TAGS.join(", ")}
+  Pick 2-5 tags that describe the mood/atmosphere of this artist's work.
+
+**related_artists**: Each entry MUST be "Firstname Lastname" format only. No descriptions or notes.
+
+Return ONLY valid JSON, no other text.`;
+}
+
+/** Enrich a single artist via Claude with web search */
+export async function enrichArtist(
+  artistId: number,
+): Promise<ArtistEnrichment> {
+  const admin = createAdminClient();
+
+  // Fetch artist data
+  const { data: artist, error } = await admin
+    .from("artists")
+    .select("*")
+    .eq("id", artistId)
+    .single();
+
+  if (error || !artist) {
+    throw new Error(`Artist ${artistId} not found: ${error?.message}`);
+  }
+
+  // Fetch price range from artworks
+  const { data: priceData } = await admin
+    .from("artworks")
+    .select("price")
+    .contains("artist_ids", [artistId])
+    .not("price", "is", null);
+
+  const prices = (priceData ?? []).map((p) => p.price as number).filter((p) => p > 0);
+  const priceRange = {
+    min: prices.length > 0 ? Math.min(...prices) : null,
+    max: prices.length > 0 ? Math.max(...prices) : null,
+  };
+
+  // Fetch aggregate vision analysis tags from artworks_extended
+  const { data: artworkIds } = await admin
+    .from("artworks")
+    .select("id")
+    .contains("artist_ids", [artistId]);
+
+  let artworkTags = { style: [] as string[], subject: [] as string[], mood: [] as string[] };
+
+  if (artworkIds && artworkIds.length > 0) {
+    const ids = artworkIds.map((a) => a.id);
+    const { data: extRows } = await admin
+      .from("artworks_extended")
+      .select("style_tags, subject_tags, mood_tags")
+      .in("artwork_id", ids)
+      .not("vision_analyzed_at", "is", null);
+
+    if (extRows && extRows.length > 0) {
+      // Aggregate and count tags, take top ones
+      const countTags = (rows: typeof extRows, field: "style_tags" | "subject_tags" | "mood_tags") => {
+        const counts = new Map<string, number>();
+        for (const row of rows) {
+          const tags = (row[field] as string[] | null) ?? [];
+          for (const tag of tags) {
+            if (tag) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+          }
+        }
+        return Array.from(counts.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([tag]) => tag);
+      };
+
+      artworkTags = {
+        style: countTags(extRows, "style_tags"),
+        subject: countTags(extRows, "subject_tags"),
+        mood: countTags(extRows, "mood_tags"),
+      };
+    }
+  }
+
+  // Build prompt
+  const prompt = buildArtistPrompt(artist, priceRange, artworkTags);
+
+  // Call Claude with web search
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 8192,
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 10 }],
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  // Extract the final text block
+  const textBlocks = response.content.filter(
+    (b): b is Anthropic.TextBlock => b.type === "text",
+  );
+  const text = textBlocks[textBlocks.length - 1]?.text || "{}";
+
+  // Extract JSON from response
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error("No JSON object found in Claude response");
+  }
+  const jsonStr = jsonMatch[0];
+
+  const enrichment: ArtistEnrichment = JSON.parse(jsonStr);
+
+  // Validate/filter tags to canonical vocabularies
+  const styleTagSet = new Set(STYLE_TAGS);
+  const subjectTagSet = new Set(SUBJECT_TAGS);
+  const moodTagSet = new Set(MOOD_TAGS);
+
+  if (enrichment.artistic_practice) {
+    enrichment.artistic_practice.style_tags =
+      (enrichment.artistic_practice.style_tags ?? []).filter((t) =>
+        t && styleTagSet.has(t.toLowerCase()),
+      );
+    enrichment.artistic_practice.subject_tags =
+      (enrichment.artistic_practice.subject_tags ?? []).filter((t) =>
+        t && subjectTagSet.has(t.toLowerCase()),
+      );
+    enrichment.artistic_practice.mood_tags =
+      (enrichment.artistic_practice.mood_tags ?? []).filter((t) =>
+        t && moodTagSet.has(t.toLowerCase()),
       );
   }
 
