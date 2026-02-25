@@ -11,6 +11,7 @@ const navLinks = [
   { href: "/artists", label: "Artists" },
   { href: "/contacts", label: "Contacts" },
   { href: "/search", label: "Discover" },
+  { href: "/tools", label: "Tools" },
   { href: "/admin", label: "Admin" },
 ];
 

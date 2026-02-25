@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import Link from "next/link";
 
-export default async function AdminLayout({
+export default async function ToolsLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -46,11 +46,7 @@ export default async function AdminLayout({
     <div className="-mt-8">
       <div className="border-b border-gray-200">
         <nav className="mx-auto flex max-w-7xl gap-6 px-4 sm:px-6 lg:px-8">
-          <AdminTab href="/admin/sync">Sync Dashboard</AdminTab>
-          <AdminTab href="/admin/batch">Batch Processing</AdminTab>
-          {role === "admin" && (
-            <AdminTab href="/admin/users">User Management</AdminTab>
-          )}
+          <ToolsTab href="/tools/scan">Card Scanner</ToolsTab>
         </nav>
       </div>
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -60,7 +56,7 @@ export default async function AdminLayout({
   );
 }
 
-function AdminTab({ href, children }: { href: string; children: React.ReactNode }) {
+function ToolsTab({ href, children }: { href: string; children: React.ReactNode }) {
   return (
     <Link
       href={href}
