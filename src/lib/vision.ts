@@ -14,6 +14,98 @@ export interface ArtworkAnalysis {
   color_palette: Array<{ hex: string; name: string; percentage: number }>;
 }
 
+export interface BusinessCardData {
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  phone_mobile: string | null;
+  company: string | null;
+  website: string | null;
+  title: string | null; // job title → maps to contact "type"
+  street: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  country: string | null;
+  confidence: "high" | "medium" | "low";
+}
+
+export async function scanBusinessCard(
+  images: string[],
+  mediaType: string = "image/jpeg",
+): Promise<BusinessCardData> {
+  // Resize each image for Claude Vision
+  const imageBlocks = await Promise.all(
+    images.map(async (base64Str) => {
+      const rawBuffer = Buffer.from(base64Str, "base64");
+      const resized = await sharp(rawBuffer)
+        .resize(VISION_MAX_SIZE, VISION_MAX_SIZE, {
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: 90 })
+        .toBuffer();
+
+      return {
+        type: "image" as const,
+        source: {
+          type: "base64" as const,
+          media_type: mediaType as "image/jpeg",
+          data: resized.toString("base64"),
+        },
+      };
+    }),
+  );
+
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1024,
+    messages: [
+      {
+        role: "user",
+        content: [
+          ...imageBlocks,
+          {
+            type: "text",
+            text: `Extract contact information from this business card.${images.length > 1 ? " Two images are provided — they are the front and back of the same card. Combine information from both sides." : ""}
+
+Return a JSON object with these fields:
+- "first_name": string or null
+- "last_name": string or null
+- "email": string or null
+- "phone": string or null (primary/office phone)
+- "phone_mobile": string or null (mobile/cell phone, if a separate number is listed)
+- "company": string or null
+- "website": string or null
+- "title": string or null (job title, e.g. "Gallery Director", "Curator")
+- "street": string or null
+- "city": string or null
+- "state": string or null
+- "zip": string or null
+- "country": string or null
+- "confidence": "high" if text is clearly legible and fields are unambiguous, "medium" if some fields are uncertain, "low" if significant guessing was required
+
+Return ONLY valid JSON, no markdown code fences, no other text.`,
+          },
+        ],
+      },
+    ],
+  });
+
+  const textBlock = response.content.find((b) => b.type === "text");
+  if (!textBlock || textBlock.type !== "text") {
+    throw new Error("No text response from Claude");
+  }
+
+  let jsonText = textBlock.text.trim();
+  if (jsonText.startsWith("```")) {
+    jsonText = jsonText.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  }
+
+  return JSON.parse(jsonText) as BusinessCardData;
+}
+
 export async function analyzeArtwork(
   imageUrl: string,
   title: string,

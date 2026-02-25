@@ -48,6 +48,7 @@ export default async function AdminLayout({
         <nav className="mx-auto flex max-w-7xl gap-6 px-4 sm:px-6 lg:px-8">
           <AdminTab href="/admin/sync">Sync Dashboard</AdminTab>
           <AdminTab href="/admin/batch">Batch Processing</AdminTab>
+          <AdminTab href="/admin/scan">Card Scanner</AdminTab>
           {role === "admin" && (
             <AdminTab href="/admin/users">User Management</AdminTab>
           )}
