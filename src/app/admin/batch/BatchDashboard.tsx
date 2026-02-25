@@ -9,6 +9,8 @@ interface BatchStats {
   withImages: number;
   embedded: number;
   analyzed: number;
+  collectors: number;
+  collectorsEnriched: number;
 }
 
 interface ErrorEntry {
@@ -19,7 +21,7 @@ interface ErrorEntry {
 
 interface BatchProgress {
   running: boolean;
-  type: "embed" | "analyze" | null;
+  type: "embed" | "analyze" | "enrich" | null;
   current: number;
   total: number;
   currentItem: string;
@@ -28,11 +30,13 @@ interface BatchProgress {
 }
 
 type BatchMode = "incremental" | "full";
+type EnrichCategory = "collector";
 
 export default function BatchDashboard({ stats }: { stats: BatchStats }) {
   const router = useRouter();
   const supabase = createClient();
   const [mode, setMode] = useState<BatchMode>("incremental");
+  const [enrichCategory, setEnrichCategory] = useState<EnrichCategory>("collector");
   const [progress, setProgress] = useState<BatchProgress>({
     running: false,
     type: null,
@@ -116,7 +120,6 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
 
     if (type === "embed") {
       // Batch embedding: send groups to /api/embed/batch
-      // Paid tier: 2M TPM, ~1K tokens/image → batch of 50
       const BATCH_SIZE = 50;
       let processed = 0;
 
@@ -125,7 +128,6 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
 
         const batch = toProcess.slice(i, i + BATCH_SIZE);
         const batchIds = batch.map((a) => a.id);
-        const batchTitle = batch.map((a) => a.title || `Artwork ${a.id}`).join(", ");
 
         setProgress((prev) => ({
           ...prev,
@@ -142,7 +144,6 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
 
           if (!res.ok) {
             const data = await res.json().catch(() => ({ error: "Unknown error" }));
-            // Mark all items in batch as failed
             for (const item of batch) {
               setProgress((prev) => ({
                 ...prev,
@@ -154,7 +155,6 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
             }
           } else {
             const data = await res.json();
-            // Add individual errors from the batch
             if (data.errors && data.errors.length > 0) {
               for (const err of data.errors) {
                 const item = batch.find((a) => a.id === err.artworkId);
@@ -185,7 +185,7 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
 
       }
     } else {
-      // Vision analysis: still one at a time (Claude doesn't batch)
+      // Vision analysis: one at a time
       const endpoint = "/api/analyze";
 
       for (let i = 0; i < toProcess.length; i++) {
@@ -227,9 +227,93 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
           }));
         }
 
-        // Rate limit delay for Claude
         await new Promise((r) => setTimeout(r, 500));
       }
+    }
+
+    setProgress((prev) => ({ ...prev, running: false }));
+    router.refresh();
+  }
+
+  async function runEnrichBatch() {
+    pauseRef.current = false;
+
+    // Fetch contacts matching the selected category
+    let query = supabase
+      .from("contacts_extended")
+      .select("contact_id")
+      .eq("classification", enrichCategory);
+
+    if (mode === "incremental") {
+      query = query.is("collector_brief", null);
+    }
+
+    const { data: contacts } = await query.order("contact_id").limit(10000);
+
+    if (!contacts || contacts.length === 0) return;
+
+    // Fetch display names for progress display
+    const contactIds = contacts.map((c) => c.contact_id);
+    const { data: contactNames } = await supabase
+      .from("contacts")
+      .select("id, display_name")
+      .in("id", contactIds);
+
+    const nameMap = new Map(
+      (contactNames ?? []).map((c) => [c.id, c.display_name]),
+    );
+
+    setProgress({
+      running: true,
+      type: "enrich",
+      current: 0,
+      total: contacts.length,
+      currentItem: "",
+      startedAt: new Date(),
+      errors: [],
+    });
+
+    for (let i = 0; i < contacts.length; i++) {
+      if (pauseRef.current) break;
+
+      const contactId = contacts[i].contact_id;
+      const name = nameMap.get(contactId) || `Contact ${contactId}`;
+
+      setProgress((prev) => ({
+        ...prev,
+        current: i + 1,
+        currentItem: name,
+      }));
+
+      try {
+        const res = await fetch("/api/enrich/contact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contactId }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({ error: "Unknown error" }));
+          setProgress((prev) => ({
+            ...prev,
+            errors: [
+              ...prev.errors,
+              { artworkId: contactId, title: name, error: data.error || `HTTP ${res.status}` },
+            ],
+          }));
+        }
+      } catch (e) {
+        setProgress((prev) => ({
+          ...prev,
+          errors: [
+            ...prev.errors,
+            { artworkId: contactId, title: name, error: String(e) },
+          ],
+        }));
+      }
+
+      // Longer delay — web search is slower and more expensive
+      await new Promise((r) => setTimeout(r, 2000));
     }
 
     setProgress((prev) => ({ ...prev, running: false }));
@@ -253,7 +337,12 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
       errors: [],
     });
 
-    const endpoint = type === "embed" ? "/api/embed" : "/api/analyze";
+    const endpoint =
+      type === "embed"
+        ? "/api/embed"
+        : type === "analyze"
+          ? "/api/analyze"
+          : "/api/enrich/contact";
 
     for (let i = 0; i < failedItems.length; i++) {
       if (pauseRef.current) break;
@@ -266,10 +355,15 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
       }));
 
       try {
+        const body =
+          type === "enrich"
+            ? { contactId: item.artworkId }
+            : { artworkId: item.artworkId };
+
         const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ artworkId: item.artworkId }),
+          body: JSON.stringify(body),
         });
 
         if (!res.ok) {
@@ -292,11 +386,8 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
         }));
       }
 
-      if (type === "analyze") {
-        await new Promise((r) => setTimeout(r, 1000));
-      } else {
-        await new Promise((r) => setTimeout(r, 300));
-      }
+      const delay = type === "enrich" ? 2000 : type === "analyze" ? 1000 : 300;
+      await new Promise((r) => setTimeout(r, delay));
     }
 
     setProgress((prev) => ({ ...prev, running: false }));
@@ -337,6 +428,21 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
 
   const embedRemaining = stats.withImages - stats.embedded;
   const analyzeRemaining = stats.withImages - stats.analyzed;
+  const enrichRemaining = stats.collectors - stats.collectorsEnriched;
+
+  const progressLabel =
+    progress.type === "embed"
+      ? "CLIP Embeddings"
+      : progress.type === "analyze"
+        ? "Vision Analysis"
+        : "Contact Enrichment";
+
+  const progressColor =
+    progress.type === "embed"
+      ? "bg-blue-600"
+      : progress.type === "analyze"
+        ? "bg-purple-600"
+        : "bg-emerald-600";
 
   return (
     <div>
@@ -371,13 +477,13 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
         </div>
         <span className="text-xs text-gray-400">
           {mode === "incremental"
-            ? "Only process unprocessed artworks"
-            : "Re-process all artworks with images"}
+            ? "Only process unprocessed items"
+            : "Re-process all items"}
         </span>
       </div>
 
       {/* Stats Cards */}
-      <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2">
+      <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
         {/* CLIP Embeddings Card */}
         <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-gray-900">CLIP Embeddings</h3>
@@ -414,7 +520,7 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
 
         {/* Claude Vision Analysis Card */}
         <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-gray-900">Claude Vision Analysis</h3>
+          <h3 className="text-lg font-semibold text-gray-900">Vision Analysis</h3>
           <div className="mt-3 space-y-1">
             <p className="text-sm text-gray-600">
               <span className="text-2xl font-bold text-gray-900">
@@ -445,6 +551,59 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
             {mode === "full" ? "Re-analyze All" : "Start Analysis"}
           </button>
         </div>
+
+        {/* Contact Enrichment Card */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-gray-900">Contact Enrichment</h3>
+          <div className="mt-3 space-y-1">
+            <p className="text-sm text-gray-600">
+              <span className="text-2xl font-bold text-gray-900">
+                {stats.collectorsEnriched.toLocaleString()}
+              </span>{" "}
+              of {stats.collectors.toLocaleString()} complete
+            </p>
+            <p className="text-sm text-gray-500">
+              {enrichRemaining.toLocaleString()} remaining
+            </p>
+          </div>
+          <div className="mt-3">
+            <div className="h-2.5 w-full rounded-full bg-gray-200">
+              <div
+                className="h-2.5 rounded-full bg-emerald-600 transition-all duration-300"
+                style={{ width: `${getPercentage(stats.collectorsEnriched, stats.collectors)}%` }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-400">
+              {getPercentage(stats.collectorsEnriched, stats.collectors)}%
+            </p>
+          </div>
+          {/* Category Toggle */}
+          <div className="mt-3">
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Category
+            </label>
+            <div className="mt-1 inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+              <button
+                onClick={() => setEnrichCategory("collector")}
+                disabled={progress.running}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  enrichCategory === "collector"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                } disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                Collectors ({stats.collectors})
+              </button>
+            </div>
+          </div>
+          <button
+            onClick={runEnrichBatch}
+            disabled={progress.running || (mode === "incremental" && enrichRemaining === 0)}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {mode === "full" ? "Re-enrich All" : "Start Enrichment"}
+          </button>
+        </div>
       </div>
 
       {/* Progress Section */}
@@ -453,7 +612,7 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-900">
               {progress.running ? "Processing" : "Batch Complete"}
-              {progress.type === "embed" ? " — CLIP Embeddings" : " — Vision Analysis"}
+              {" — "}{progressLabel}
             </h3>
             {progress.running && (
               <button
@@ -485,9 +644,7 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
           <div className="mt-3">
             <div className="h-2.5 w-full rounded-full bg-gray-200">
               <div
-                className={`h-2.5 rounded-full transition-all duration-300 ${
-                  progress.type === "embed" ? "bg-blue-600" : "bg-purple-600"
-                }`}
+                className={`h-2.5 rounded-full transition-all duration-300 ${progressColor}`}
                 style={{ width: `${getPercentage(progress.current, progress.total)}%` }}
               />
             </div>
@@ -524,7 +681,9 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
           <ul className="mt-3 space-y-2">
             {progress.errors.map((err, idx) => (
               <li key={`${err.artworkId}-${idx}`} className="text-sm text-red-700">
-                <span className="font-medium">Artwork {err.artworkId}</span>{" "}
+                <span className="font-medium">
+                  {progress.type === "enrich" ? "Contact" : "Artwork"} {err.artworkId}
+                </span>{" "}
                 &ldquo;{err.title}&rdquo;:{" "}
                 <span className="text-red-600">{err.error}</span>
               </li>
