@@ -407,6 +407,7 @@ Focus on:
 - Every claim in the formatted_bio, philosophy, process, and evolution fields must be traceable to a specific source you found. If you didn't find it in a source, don't include it.
 - **Use numbered inline citations** like [1], [2], [3] in the text fields. These numbers MUST correspond to the position (1-based) in YOUR "sources" array in the JSON output. So [1] means the first item in your sources array, [2] means the second, etc.
 - **IMPORTANT**: First compile your full sources list, then write the text using citation numbers that match that list. Do NOT use numbers from the web search result indices — only from your own output sources array. If you cite [5], there must be a 5th entry in your sources array.
+- **CRITICAL**: The highest citation number [N] in ANY text field must NOT exceed the total number of entries in your sources array. If your sources array has 15 entries, the highest citation allowed is [15]. Every source you cite MUST appear in the sources array. Double-check this before outputting.
 - Use citations liberally throughout formatted_bio, philosophy, process, and evolution. Every paragraph should have at least one citation. Every direct quote or paraphrase of the artist's words must have a citation.
 - If you can only find limited information about a topic (e.g., no interviews about process), say so explicitly rather than writing plausible-sounding filler. A shorter, well-sourced section is far more valuable than a longer speculative one.
 - Do not fabricate — if information is limited, say so
@@ -571,6 +572,21 @@ export async function enrichArtist(
   const jsonStr = jsonMatch[0];
 
   const enrichment: ArtistEnrichment = JSON.parse(jsonStr);
+
+  // Strip orphaned citations (where [N] exceeds sources array length)
+  const sourceCount = enrichment.sources?.length ?? 0;
+  const stripOrphanedCitations = (text: string | undefined): string | undefined => {
+    if (!text || sourceCount === 0) return text;
+    return text.replace(/\[(\d+)\]/g, (match, num) => {
+      return parseInt(num, 10) <= sourceCount ? match : "";
+    });
+  };
+  enrichment.formatted_bio = stripOrphanedCitations(enrichment.formatted_bio) ?? enrichment.formatted_bio;
+  if (enrichment.artistic_practice) {
+    enrichment.artistic_practice.philosophy = stripOrphanedCitations(enrichment.artistic_practice.philosophy) ?? enrichment.artistic_practice.philosophy;
+    enrichment.artistic_practice.process = stripOrphanedCitations(enrichment.artistic_practice.process) ?? enrichment.artistic_practice.process;
+    enrichment.artistic_practice.evolution = stripOrphanedCitations(enrichment.artistic_practice.evolution) ?? enrichment.artistic_practice.evolution;
+  }
 
   // Validate/filter tags to canonical vocabularies
   const styleTagSet = new Set(STYLE_TAGS);
