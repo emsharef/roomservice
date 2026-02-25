@@ -756,6 +756,21 @@ export default function ScanDashboard({
 
             {/* Mobile Card List */}
             <div className="divide-y divide-gray-100 md:hidden">
+              {draftCount > 0 && (
+                <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-100">
+                  <input
+                    type="checkbox"
+                    checked={
+                      contacts
+                        .filter((c) => c.status === "draft")
+                        .every((c) => selectedIds.has(c.id))
+                    }
+                    onChange={toggleSelectAll}
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-xs font-medium text-gray-500">Select all drafts</span>
+                </div>
+              )}
               {contacts.map((contact) => (
                 <MobileContactCard
                   key={contact.id}
