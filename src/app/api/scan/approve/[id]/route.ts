@@ -39,9 +39,9 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  if (staged.status !== "draft") {
+  if (!["draft", "error"].includes(staged.status)) {
     return NextResponse.json(
-      { error: "Can only approve draft contacts" },
+      { error: "Can only approve draft or errored contacts" },
       { status: 400 },
     );
   }
@@ -60,7 +60,6 @@ export async function POST(
       email: staged.email,
       phone: staged.phone,
       phone_mobile: staged.phone_mobile,
-      type: staged.type,
       website: staged.website,
       company: staged.company,
       primary_street: staged.primary_street,
@@ -74,8 +73,12 @@ export async function POST(
     if (staged.tags && staged.tags.length > 0) {
       contactData.tags = staged.tags;
     }
-    if (staged.notes && staged.notes.length > 0) {
-      contactData.notes = staged.notes;
+    const notes = [...(staged.notes || [])];
+    if (staged.type) {
+      notes.unshift(`Role: ${staged.type}`);
+    }
+    if (notes.length > 0) {
+      contactData.notes = notes;
     }
 
     // Remove null/undefined values
