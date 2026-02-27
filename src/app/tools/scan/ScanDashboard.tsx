@@ -324,7 +324,7 @@ export default function ScanDashboard({
   async function handleApproveSelected() {
     const draftIds = [...selectedIds].filter((id) => {
       const contact = contacts.find((c) => c.id === id);
-      return contact?.status === "draft";
+      return contact?.status === "draft" || contact?.status === "error";
     });
 
     if (draftIds.length === 0) return;
@@ -374,7 +374,7 @@ export default function ScanDashboard({
 
     const draftIds = [...selectedIds].filter((id) => {
       const contact = contacts.find((c) => c.id === id);
-      return contact?.status === "draft";
+      return contact?.status === "draft" || contact?.status === "error";
     });
 
     for (const id of draftIds) {
@@ -413,22 +413,24 @@ export default function ScanDashboard({
     });
   }
 
-  // Select all drafts
+  const canApprove = (status: string) => status === "draft" || status === "error";
+
+  // Select all actionable contacts
   function toggleSelectAll() {
-    const draftIds = contacts
-      .filter((c) => c.status === "draft")
+    const actionableIds = contacts
+      .filter((c) => canApprove(c.status))
       .map((c) => c.id);
-    const allSelected = draftIds.every((id) => selectedIds.has(id));
+    const allSelected = actionableIds.every((id) => selectedIds.has(id));
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(draftIds));
+      setSelectedIds(new Set(actionableIds));
     }
   }
 
-  const draftCount = contacts.filter((c) => c.status === "draft").length;
+  const draftCount = contacts.filter((c) => canApprove(c.status)).length;
   const selectedDraftCount = [...selectedIds].filter((id) =>
-    contacts.find((c) => c.id === id && c.status === "draft"),
+    contacts.find((c) => c.id === id && canApprove(c.status)),
   ).length;
 
   return (
@@ -805,7 +807,7 @@ export default function ScanDashboard({
                         checked={
                           draftCount > 0 &&
                           contacts
-                            .filter((c) => c.status === "draft")
+                            .filter((c) => canApprove(c.status))
                             .every((c) => selectedIds.has(c.id))
                         }
                         onChange={toggleSelectAll}
@@ -863,13 +865,13 @@ export default function ScanDashboard({
                     type="checkbox"
                     checked={
                       contacts
-                        .filter((c) => c.status === "draft")
+                        .filter((c) => canApprove(c.status))
                         .every((c) => selectedIds.has(c.id))
                     }
                     onChange={toggleSelectAll}
                     className="rounded border-gray-300"
                   />
-                  <span className="text-xs font-medium text-gray-500">Select all drafts</span>
+                  <span className="text-xs font-medium text-gray-500">Select all</span>
                 </div>
               )}
               {contacts.map((contact) => (
@@ -1255,7 +1257,7 @@ function ContactRow({
     <>
       <tr className={isEditing ? "bg-gray-50" : "hover:bg-gray-50"}>
         <td className="px-6 py-3">
-          {contact.status === "draft" && (
+          {(contact.status === "draft" || contact.status === "error") && (
             <input
               type="checkbox"
               checked={isSelected}
@@ -1280,7 +1282,7 @@ function ContactRow({
         </td>
         <td className="px-6 py-3">
           <div className="flex items-center gap-1">
-            {contact.status === "draft" && (
+            {(contact.status === "draft" || contact.status === "error") && (
               <>
                 <button
                   onClick={onEdit}
@@ -1453,7 +1455,7 @@ function MobileContactCard({
       <div className="flex items-start gap-3">
         {/* Checkbox */}
         <div className="pt-0.5">
-          {contact.status === "draft" ? (
+          {contact.status === "draft" || contact.status === "error" ? (
             <input
               type="checkbox"
               checked={isSelected}
@@ -1500,7 +1502,7 @@ function MobileContactCard({
 
             {/* Actions */}
             <div className="flex shrink-0 items-center gap-1">
-              {contact.status === "draft" && (
+              {(contact.status === "draft" || contact.status === "error") && (
                 <>
                   <button
                     onClick={onEdit}

@@ -49,7 +49,7 @@ export async function POST(
   // Mark as approved (in progress)
   await admin
     .from("staged_contacts")
-    .update({ status: "approved", updated_at: new Date().toISOString() })
+    .update({ status: "approved", error_message: null, updated_at: new Date().toISOString() })
     .eq("id", id);
 
   try {

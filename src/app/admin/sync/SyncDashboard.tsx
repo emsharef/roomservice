@@ -439,16 +439,28 @@ export default function SyncDashboard({
             </div>
             <div className="mt-2">
               <div className="h-2 w-full rounded-full bg-gray-200">
-                <div
-                  className="h-2 rounded-full bg-gray-900 transition-all duration-300"
-                  style={{ width: `${getPercentage(progress.processed, progress.total)}%` }}
-                />
+                {syncMode === "incremental" && progress.phase === "syncing" ? (
+                  <div className="h-2 w-1/3 animate-pulse rounded-full bg-gray-900" />
+                ) : (
+                  <div
+                    className="h-2 rounded-full bg-gray-900 transition-all duration-300"
+                    style={{ width: `${getPercentage(progress.processed, progress.total)}%` }}
+                  />
+                )}
               </div>
               <div className="mt-1 flex justify-between text-xs text-gray-500">
-                <span>
-                  {progress.processed.toLocaleString()} / {progress.total.toLocaleString()}
-                </span>
-                <span>{getPercentage(progress.processed, progress.total)}%</span>
+                {syncMode === "incremental" && progress.phase === "syncing" ? (
+                  <span>
+                    {progress.processed.toLocaleString()} updated so far
+                  </span>
+                ) : (
+                  <>
+                    <span>
+                      {progress.processed.toLocaleString()} / {progress.total.toLocaleString()}
+                    </span>
+                    <span>{getPercentage(progress.processed, progress.total)}%</span>
+                  </>
+                )}
               </div>
             </div>
             {progress.phase === "syncing" && (
