@@ -304,6 +304,272 @@ export async function enrichContact(
 }
 
 // ---------------------------------------------------------------------------
+// Prospect Enrichment
+// ---------------------------------------------------------------------------
+
+export interface ProspectEnrichment {
+  display_name: string;
+  first_name: string;
+  last_name: string;
+  title: string | null;
+  company: string | null;
+  location: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  photo_url: string | null;
+  linkedin: string | null;
+  instagram: string | null;
+  other_socials: string[];
+  summary: string;
+  professional: {
+    current_role: string;
+    career_highlights: string[];
+    industry: string;
+  };
+  art_world: {
+    board_memberships: string[];
+    collection_mentions: string[];
+    art_events: string[];
+    advisory_roles: string[];
+    known_artists: string[];
+  };
+  philanthropy: {
+    foundations: string[];
+    notable_giving: string[];
+  };
+  collection_profile: {
+    style_preferences: string[];
+    subject_preferences: string[];
+    mood_preferences: string[];
+    engagement_level:
+      | "active_collector"
+      | "casual_buyer"
+      | "institutional"
+      | "unknown";
+  };
+  sources: Array<{ url: string; title: string; relevance: string }>;
+  confidence: "high" | "medium" | "low";
+  notes: string;
+}
+
+/** Build the enrichment prompt for a prospect */
+function buildProspectPrompt(
+  prospect: {
+    input_name: string;
+    company?: string | null;
+    title?: string | null;
+    location?: string | null;
+  },
+  batchName: string,
+  galleryArtists: string[],
+): string {
+  const company = prospect.company || "Unknown";
+  const title = prospect.title || "Unknown";
+  const location = prospect.location || "Unknown";
+
+  return `You are a research assistant for an art gallery called "${GALLERY_NAME}".
+Your task is to research a prospective collector/contact and compile a detailed profile using ONLY publicly available information.
+
+## Person to Research
+- **Name:** ${prospect.input_name}
+- **Company:** ${company}
+- **Title:** ${title}
+- **Location:** ${location}
+- **Context:** This person is from a prospect list named "${batchName}"
+
+## Gallery Context
+${GALLERY_NAME} represents these artists: ${galleryArtists.join(", ")}
+
+## Research Instructions
+Search for publicly available information about this person. Focus on:
+
+1. **Contact information** — email address, phone number, LinkedIn profile URL, Instagram handle, personal/professional website, any other social media profiles
+2. **Photo** — find a headshot or profile photo URL (from LinkedIn, company page, press articles, conference speaker pages)
+3. **Professional background** — current role and company, career highlights, industry
+4. **Art world connections** — museum/art nonprofit board memberships, collection mentions in press, art fair/exhibition attendance, advisory or curatorial roles, artists they are known to collect or support
+5. **Philanthropic activity** — personal or family foundations, notable giving or campaigns
+6. **Collecting taste** — based on any public mentions of their collection, gallery relationships, auction activity, or art interests, infer their preferences
+
+**Critical — source grounding and inline citations:**
+- ONLY write about things you found in your web search results. Do not draw on background knowledge to fill gaps.
+- Every claim must be traceable to a specific source you found. If you didn't find it in a source, don't include it.
+- **Use numbered inline citations** like [1], [2], [3] in text fields (summary, professional.current_role, etc.). These numbers MUST correspond to the position (1-based) in YOUR "sources" array in the JSON output.
+- **CRITICAL**: The highest citation number [N] in ANY text field must NOT exceed the total number of entries in your sources array. If your sources array has 8 entries, the highest citation allowed is [8]. Every source you cite MUST appear in the sources array. Double-check this before outputting.
+
+**Privacy rules:**
+- Only use publicly available information (news articles, LinkedIn, museum websites, company pages, etc.)
+- Do not speculate about private wealth, net worth, or financial details beyond what is publicly reported
+- Do not fabricate information — if limited information is available, say so
+
+## Output Format
+Return a JSON object matching this structure:
+
+{
+  "display_name": "Full display name as found in research",
+  "first_name": "First name",
+  "last_name": "Last name",
+  "title": "Current job title or null",
+  "company": "Current company or null",
+  "location": "City, State/Country or null",
+  "email": "Email address if publicly available, or null",
+  "phone": "Phone number if publicly available, or null",
+  "website": "Personal or professional website URL, or null",
+  "photo_url": "URL to a headshot/profile photo, or null",
+  "linkedin": "Full LinkedIn profile URL, or null",
+  "instagram": "Instagram handle (without @), or null",
+  "other_socials": ["Twitter/X URL", "Facebook URL", "other profile URLs"],
+  "summary": "2-3 sentence overview of this person relevant to the gallery relationship, with inline citations [1][2]",
+  "professional": {
+    "current_role": "Their current title and company, with inline citation [N]",
+    "career_highlights": ["Notable career achievements or previous roles"],
+    "industry": "Their primary industry"
+  },
+  "art_world": {
+    "board_memberships": ["Museum or art org board seats — full institution name"],
+    "collection_mentions": ["Any public mentions of their art collection"],
+    "art_events": ["Known art fair attendance, exhibition openings, etc."],
+    "advisory_roles": ["Art advisory or curatorial roles"],
+    "known_artists": ["Firstname Lastname"]
+  },
+  "philanthropy": {
+    "foundations": ["Personal or family foundations"],
+    "notable_giving": ["Publicly reported donations or campaigns"]
+  },
+  "collection_profile": {
+    "style_preferences": ["tag1", "tag2"],
+    "subject_preferences": ["tag1", "tag2"],
+    "mood_preferences": ["tag1", "tag2"],
+    "engagement_level": "active_collector | casual_buyer | institutional | unknown"
+  },
+  "sources": [
+    { "url": "https://...", "title": "Source title", "relevance": "What this source tells us" }
+  ],
+  "confidence": "high | medium | low",
+  "notes": "Any caveats about the research quality or information gaps"
+}
+
+### IMPORTANT formatting rules:
+
+**known_artists**: Each entry MUST be "Firstname Lastname" format only. No descriptions, no parenthetical notes, no gallery names, no prices. Just the artist's name.
+  Good: ["Carrie Moyer", "Joshua Nathanson", "Maya Hayuk"]
+  Bad: ["Carrie Moyer (acquired $65K work)", "Joshua Nathanson from Various Small Fires"]
+
+**style_preferences**: MUST use tags from this list ONLY: ${STYLE_TAGS.join(", ")}
+  Pick 3-8 tags that best describe the types of art this person is drawn to, based on their known acquisitions and stated interests.
+
+**subject_preferences**: MUST use tags from this list ONLY: ${SUBJECT_TAGS.join(", ")}
+  Pick 2-6 tags that describe the subject matter this person favors.
+
+**mood_preferences**: MUST use tags from this list ONLY: ${MOOD_TAGS.join(", ")}
+  Pick 2-5 tags that describe the mood/atmosphere of art this person gravitates toward.
+
+Return ONLY valid JSON, no other text.`;
+}
+
+/** Enrich a single prospect via Claude with web search */
+export async function enrichProspect(
+  prospectId: string,
+): Promise<ProspectEnrichment> {
+  const admin = createAdminClient();
+
+  // Fetch prospect data
+  const { data: prospect, error } = await admin
+    .from("prospects")
+    .select("*")
+    .eq("id", prospectId)
+    .single();
+
+  if (error || !prospect) {
+    throw new Error(`Prospect ${prospectId} not found: ${error?.message}`);
+  }
+
+  // Fetch batch name for context
+  const { data: batch, error: batchError } = await admin
+    .from("prospect_batches")
+    .select("name")
+    .eq("id", prospect.batch_id)
+    .single();
+
+  if (batchError || !batch) {
+    throw new Error(`Batch ${prospect.batch_id} not found: ${batchError?.message}`);
+  }
+
+  // Fetch gallery artists for context
+  const galleryArtists = await getGalleryArtists();
+
+  // Build prompt
+  const prompt = buildProspectPrompt(prospect, batch.name, galleryArtists);
+
+  // Call Claude with web search
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 8192,
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 15 }],
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  // Extract the final text block (after tool use blocks)
+  const textBlocks = response.content.filter(
+    (b): b is Anthropic.TextBlock => b.type === "text",
+  );
+  const text = textBlocks[textBlocks.length - 1]?.text || "{}";
+
+  // Extract JSON from response — Claude may include preamble text
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error("No JSON object found in Claude response");
+  }
+  const jsonStr = jsonMatch[0];
+
+  const enrichment: ProspectEnrichment = JSON.parse(jsonStr);
+
+  // Strip orphaned citations (where [N] exceeds sources array length)
+  const sourceCount = enrichment.sources?.length ?? 0;
+  const stripOrphanedCitations = (val: string | undefined | null): string | undefined | null => {
+    if (!val || sourceCount === 0) return val;
+    return val.replace(/\[(\d+)\]/g, (match, num) => {
+      return parseInt(num, 10) <= sourceCount ? match : "";
+    });
+  };
+  enrichment.summary = (stripOrphanedCitations(enrichment.summary) as string) ?? enrichment.summary;
+  if (enrichment.professional) {
+    enrichment.professional.current_role =
+      (stripOrphanedCitations(enrichment.professional.current_role) as string) ?? enrichment.professional.current_role;
+  }
+
+  // Validate/filter tags to canonical vocabularies
+  const styleTagSet = new Set(STYLE_TAGS);
+  const subjectTagSet = new Set(SUBJECT_TAGS);
+  const moodTagSet = new Set(MOOD_TAGS);
+
+  if (enrichment.collection_profile) {
+    enrichment.collection_profile.style_preferences =
+      (enrichment.collection_profile.style_preferences ?? []).filter((t) =>
+        t && styleTagSet.has(t.toLowerCase()),
+      );
+    enrichment.collection_profile.subject_preferences =
+      (enrichment.collection_profile.subject_preferences ?? []).filter((t) =>
+        t && subjectTagSet.has(t.toLowerCase()),
+      );
+    enrichment.collection_profile.mood_preferences =
+      (enrichment.collection_profile.mood_preferences ?? []).filter((t) =>
+        t && moodTagSet.has(t.toLowerCase()),
+      );
+  }
+
+  // Clean known_artists: strip anything after the name (parenthetical notes, etc.)
+  if (enrichment.art_world) {
+    enrichment.art_world.known_artists =
+      (enrichment.art_world.known_artists ?? []).map((a) =>
+        a.replace(/\s*\(.*\)$/, "").trim(),
+      );
+  }
+
+  return enrichment;
+}
+
+// ---------------------------------------------------------------------------
 // Artist Enrichment
 // ---------------------------------------------------------------------------
 
