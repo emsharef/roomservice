@@ -150,7 +150,7 @@ export default function ProspectsDashboard({
       }
 
       const data = await res.json();
-      setParsedRows(data.prospects || []);
+      setParsedRows(data.parsed || []);
     } catch (e) {
       setParseError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -205,7 +205,7 @@ export default function ProspectsDashboard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: batchName.trim(),
-          source_type: inputMode,
+          sourceType: inputMode,
           prospects: parsedRows.filter((r) => r.name.trim()),
         }),
       });
@@ -216,7 +216,7 @@ export default function ProspectsDashboard({
       }
 
       const data = await res.json();
-      router.push(`/tools/prospects/${data.batch.id}`);
+      router.push(`/tools/prospects/${data.batchId}`);
     } catch (e) {
       setParseError(e instanceof Error ? e.message : String(e));
     } finally {
