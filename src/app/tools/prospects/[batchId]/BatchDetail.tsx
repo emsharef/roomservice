@@ -215,6 +215,8 @@ function ContactIcons({ prospect }: { prospect: Prospect }) {
 // ---------------------------------------------------------------------------
 
 function TagPills({ prospect }: { prospect: Prospect }) {
+  const [expanded, setExpanded] = useState(false);
+
   const tags: { label: string; cls: string }[] = [];
 
   for (const s of prospect.style_preferences ?? []) {
@@ -233,7 +235,7 @@ function TagPills({ prospect }: { prospect: Prospect }) {
   if (tags.length === 0) return null;
 
   const maxShow = 5;
-  const visible = tags.slice(0, maxShow);
+  const visible = expanded ? tags : tags.slice(0, maxShow);
   const remaining = tags.length - maxShow;
 
   return (
@@ -247,9 +249,15 @@ function TagPills({ prospect }: { prospect: Prospect }) {
         </span>
       ))}
       {remaining > 0 && (
-        <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-          +{remaining} more
-        </span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded(!expanded);
+          }}
+          className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700"
+        >
+          {expanded ? "show less" : `+${remaining} more`}
+        </button>
       )}
     </div>
   );
