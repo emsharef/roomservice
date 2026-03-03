@@ -384,7 +384,13 @@ ${GALLERY_NAME} represents these artists: ${galleryArtists.join(", ")}
 ## Research Instructions
 Search for publicly available information about this person. Focus on:
 
-1. **Contact information** — email address, phone number, LinkedIn profile URL, Instagram handle, personal/professional website, any other social media profiles
+1. **Contact information (HIGH PRIORITY)** — This is the most valuable part of the research for our gallery. Search aggressively for:
+   - **Email address** — check their personal website, company/org staff pages, speaker bios, conference programs, published articles with author contact, university faculty pages, press releases, foundation/board pages. Many professionals list email on their personal websites or institutional profiles. Search specifically for "[person name] email" and "[person name] contact".
+   - **Phone number** — company directories, staff pages, press contacts
+   - **LinkedIn profile URL** — search LinkedIn directly
+   - **Instagram handle** — search Instagram or look for links on their website/social profiles
+   - **Personal/professional website**
+   - **Other social media profiles** (Twitter/X, Facebook, etc.)
 2. **Photo** — find a headshot or profile photo URL (from LinkedIn, company page, press articles, conference speaker pages)
 3. **Professional background** — current role and company, career highlights, industry
 4. **Art world connections** — museum/art nonprofit board memberships, collection mentions in press, art fair/exhibition attendance, advisory or curatorial roles, artists they are known to collect or support
