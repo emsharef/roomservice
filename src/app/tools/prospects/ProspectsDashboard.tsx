@@ -431,38 +431,55 @@ export default function ProspectsDashboard({
                 </span>
               </h3>
 
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">
-                        Name
-                      </th>
-                      <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">
-                        Company / Title
-                      </th>
-                      <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">
-                        Context
-                      </th>
-                      <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">
-                        {/* Actions */}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {parsedRows.map((row, i) => (
-                      <tr key={i} className="hover:bg-gray-50">
-                        <td className="px-4 py-3">
-                          <input
-                            type="text"
-                            value={row.name}
-                            onChange={(e) =>
-                              updateRow(i, "name", e.target.value)
-                            }
-                            className="w-full rounded border border-gray-200 px-2 py-1 text-sm text-gray-900 focus:border-gray-400 focus:outline-none"
+              <div className="space-y-3">
+                {parsedRows.map((row, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg border border-gray-200 bg-gray-50 p-3"
+                  >
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-xs font-medium text-gray-400">
+                        {i + 1}
+                      </span>
+                      <button
+                        onClick={() => removeRow(i)}
+                        title="Remove"
+                        className="rounded p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                      >
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          strokeWidth={1.5}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M6 18L18 6M6 6l12 12"
                           />
-                        </td>
-                        <td className="px-4 py-3">
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="mb-0.5 block text-xs font-medium text-gray-500">
+                          Name
+                        </label>
+                        <input
+                          type="text"
+                          value={row.name}
+                          onChange={(e) =>
+                            updateRow(i, "name", e.target.value)
+                          }
+                          className="w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:border-gray-400 focus:outline-none"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-0.5 block text-xs font-medium text-gray-500">
+                            Company / Title
+                          </label>
                           <input
                             type="text"
                             value={
@@ -471,7 +488,6 @@ export default function ProspectsDashboard({
                                 .join(", ") || ""
                             }
                             onChange={(e) => {
-                              // Simple split: treat as company if no comma
                               const val = e.target.value;
                               const parts = val.split(",").map((s) => s.trim());
                               if (parts.length >= 2) {
@@ -482,44 +498,26 @@ export default function ProspectsDashboard({
                                 updateRow(i, "title", "");
                               }
                             }}
-                            className="w-full rounded border border-gray-200 px-2 py-1 text-sm text-gray-900 focus:border-gray-400 focus:outline-none"
+                            className="w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:border-gray-400 focus:outline-none"
                           />
-                        </td>
-                        <td className="px-4 py-3">
+                        </div>
+                        <div>
+                          <label className="mb-0.5 block text-xs font-medium text-gray-500">
+                            Context
+                          </label>
                           <input
                             type="text"
                             value={row.context}
                             onChange={(e) =>
                               updateRow(i, "context", e.target.value)
                             }
-                            className="w-full rounded border border-gray-200 px-2 py-1 text-sm text-gray-900 focus:border-gray-400 focus:outline-none"
+                            className="w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:border-gray-400 focus:outline-none"
                           />
-                        </td>
-                        <td className="px-4 py-3">
-                          <button
-                            onClick={() => removeRow(i)}
-                            title="Remove"
-                            className="rounded p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
-                          >
-                            <svg
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                              strokeWidth={1.5}
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M6 18L18 6M6 6l12 12"
-                              />
-                            </svg>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
 
               <button
