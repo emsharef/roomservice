@@ -127,6 +127,7 @@ function ProspectPhoto({ url, name }: { url: string | null; name: string }) {
       src={url}
       alt={name}
       className="h-full w-full object-cover"
+      referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
     />
   );

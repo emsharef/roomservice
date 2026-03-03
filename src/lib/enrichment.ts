@@ -760,11 +760,13 @@ ${truncated}`,
         const { photo_url } = JSON.parse(extractMatch[0]);
         if (!photo_url || !looksLikeImageUrl(photo_url)) continue;
 
-        // Verify the URL returns an actual image
+        // Verify the URL returns an actual image (use GET, not HEAD — some
+        // servers handle HEAD differently, and we need to follow redirects)
         const check = await fetch(photo_url, {
-          method: "HEAD",
+          method: "GET",
           headers: { "User-Agent": BROWSER_UA },
           signal: AbortSignal.timeout(5_000),
+          redirect: "follow",
         });
         if (!check.ok) continue;
         const contentType = check.headers.get("content-type") || "";
