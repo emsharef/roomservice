@@ -477,6 +477,7 @@ Return ONLY valid JSON, no other text.`;
 export async function enrichProspect(
   prospectId: string,
 ): Promise<ProspectEnrichment> {
+  const enrichStartTime = Date.now();
   const admin = createAdminClient();
 
   // Fetch prospect data
@@ -572,8 +573,14 @@ export async function enrichProspect(
       );
   }
 
+  // Post-enrichment extras (contact scraping + photo finding) are bounded
+  // to avoid exceeding Vercel's 120s maxDuration. The main Claude call can
+  // take 30-90s, so we give extras a max of 25s total.
+  const elapsed = Date.now() - enrichStartTime;
+  const timeLeft = 110_000 - elapsed; // 110s budget (10s safety margin)
+
   // If we have a website but no email, try scraping the website for contact info
-  if (!enrichment.email && enrichment.website) {
+  if (timeLeft > 5_000 && !enrichment.email && enrichment.website) {
     const scraped = await scrapeContactInfo(enrichment.website);
     if (scraped.email) enrichment.email = scraped.email;
     if (scraped.phone && !enrichment.phone) enrichment.phone = scraped.phone;
@@ -581,7 +588,9 @@ export async function enrichProspect(
   }
 
   // If no photo_url or it doesn't look like a direct image, try the two-step approach
-  if (!enrichment.photo_url || !looksLikeImageUrl(enrichment.photo_url)) {
+  const elapsedAfterScrape = Date.now() - enrichStartTime;
+  const timeLeftForPhoto = 110_000 - elapsedAfterScrape;
+  if (timeLeftForPhoto > 15_000 && (!enrichment.photo_url || !looksLikeImageUrl(enrichment.photo_url))) {
     const name = enrichment.display_name || prospect.input_name;
     // Keep context short to avoid biasing search toward one specific role
     const context = enrichment.company || "";
