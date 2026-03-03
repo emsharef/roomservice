@@ -117,6 +117,44 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function DELETE(request: NextRequest) {
+  // Auth check
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const admin = createAdminClient();
+  const { data: profile } = await admin
+    .from("user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile || !["admin", "staff"].includes(profile.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { batchId } = await request.json();
+  if (!batchId) {
+    return NextResponse.json({ error: "batchId is required" }, { status: 400 });
+  }
+
+  try {
+    // Delete prospects first (foreign key constraint)
+    await admin.from("prospects").delete().eq("batch_id", batchId);
+    // Delete the batch
+    await admin.from("prospect_batches").delete().eq("id", batchId);
+
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
+  }
+}
+
 export async function GET() {
   // Auth check
   const supabase = await createClient();

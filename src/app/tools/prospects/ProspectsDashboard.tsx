@@ -52,6 +52,10 @@ export default function ProspectsDashboard({
   // Batch creation state
   const [creating, setCreating] = useState(false);
 
+  // Delete state
+  const [batches, setBatches] = useState<ProspectBatch[]>(initialBatches);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   // Convert file to base64
   const fileToBase64 = useCallback(
     (file: File): Promise<string> =>
@@ -240,6 +244,30 @@ export default function ProspectsDashboard({
     setParseError(null);
     setParsedRows(null);
     setCreating(false);
+  }
+
+  // Delete a batch
+  async function handleDeleteBatch(batchId: string, batchName: string) {
+    if (!confirm(`Delete "${batchName}" and all its prospects? This cannot be undone.`)) return;
+
+    setDeletingId(batchId);
+    try {
+      const res = await fetch("/api/prospects/batch", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: "Unknown error" }));
+        alert(data.error || "Failed to delete batch");
+        return;
+      }
+      setBatches((prev) => prev.filter((b) => b.id !== batchId));
+    } catch (e) {
+      alert(String(e));
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   // ---- Render: New Research Flow ----
@@ -622,7 +650,7 @@ export default function ProspectsDashboard({
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-        {initialBatches.length === 0 ? (
+        {batches.length === 0 ? (
           <div className="px-6 py-16 text-center">
             <svg
               className="mx-auto mb-4 h-10 w-10 text-gray-300"
@@ -689,7 +717,7 @@ export default function ProspectsDashboard({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {initialBatches.map((batch) => (
+                {batches.map((batch) => (
                   <tr
                     key={batch.id}
                     className="cursor-pointer hover:bg-gray-50"
@@ -729,19 +757,41 @@ export default function ProspectsDashboard({
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <svg
-                        className="h-4 w-4 text-gray-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        strokeWidth={1.5}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M8.25 4.5l7.5 7.5-7.5 7.5"
-                        />
-                      </svg>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteBatch(batch.id, batch.name);
+                          }}
+                          disabled={deletingId === batch.id}
+                          title="Delete batch"
+                          className="rounded p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                        >
+                          {deletingId === batch.id ? (
+                            <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                          ) : (
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                            </svg>
+                          )}
+                        </button>
+                        <svg
+                          className="h-4 w-4 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          strokeWidth={1.5}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                          />
+                        </svg>
+                      </div>
                     </td>
                   </tr>
                 ))}
