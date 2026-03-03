@@ -566,6 +566,14 @@ export async function enrichProspect(
       );
   }
 
+  // If we have a website but no email, try scraping the website for contact info
+  if (!enrichment.email && enrichment.website) {
+    const scraped = await scrapeContactInfo(enrichment.website);
+    if (scraped.email) enrichment.email = scraped.email;
+    if (scraped.phone && !enrichment.phone) enrichment.phone = scraped.phone;
+    if (scraped.instagram && !enrichment.instagram) enrichment.instagram = scraped.instagram;
+  }
+
   // If no photo_url or it doesn't look like a direct image, try the two-step approach
   if (!enrichment.photo_url || !looksLikeImageUrl(enrichment.photo_url)) {
     const name = enrichment.display_name || prospect.input_name;
@@ -578,6 +586,66 @@ export async function enrichProspect(
   }
 
   return enrichment;
+}
+
+// ---------------------------------------------------------------------------
+// Contact info scraper — fetch a website and extract email/phone/socials
+// ---------------------------------------------------------------------------
+
+const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+const PHONE_RE = /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g;
+const INSTAGRAM_RE = /(?:instagram\.com|instagr\.am)\/([a-zA-Z0-9_.]+)/gi;
+
+async function scrapeContactInfo(websiteUrl: string): Promise<{
+  email: string | null;
+  phone: string | null;
+  instagram: string | null;
+}> {
+  const result = { email: null as string | null, phone: null as string | null, instagram: null as string | null };
+
+  try {
+    const res = await fetch(websiteUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html",
+      },
+      signal: AbortSignal.timeout(10_000),
+      redirect: "follow",
+    });
+    if (!res.ok) return result;
+
+    const html = await res.text();
+
+    // Extract emails — skip generic/placeholder ones
+    const skipEmails = new Set(["user@domain.com", "email@example.com", "your@email.com", "info@example.com"]);
+    const emails = [...new Set(html.match(EMAIL_RE) || [])].filter(
+      (e) => !skipEmails.has(e.toLowerCase()) && !e.endsWith(".png") && !e.endsWith(".jpg"),
+    );
+    if (emails.length > 0) {
+      // Prefer personal-looking emails over generic ones (info@, contact@, hello@)
+      const personal = emails.find((e) => !/^(info|contact|hello|support|admin|noreply|no-reply|sales|team)@/i.test(e));
+      result.email = personal || emails[0];
+    }
+
+    // Extract phone numbers
+    const phones = html.match(PHONE_RE);
+    if (phones && phones.length > 0) {
+      result.phone = phones[0]!.trim();
+    }
+
+    // Extract Instagram handle
+    const igMatch = INSTAGRAM_RE.exec(html);
+    if (igMatch && igMatch[1]) {
+      const handle = igMatch[1].toLowerCase();
+      if (!["p", "reel", "stories", "explore", "accounts"].includes(handle)) {
+        result.instagram = handle;
+      }
+    }
+  } catch {
+    // Don't let scraping break enrichment
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
