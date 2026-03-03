@@ -415,7 +415,7 @@ Return a JSON object matching this structure:
   "email": "Email address if publicly available, or null",
   "phone": "Phone number if publicly available, or null",
   "website": "Personal or professional website URL, or null",
-  "photo_url": "URL to a headshot/profile photo, or null",
+  "photo_url": "Direct URL to an actual image file (.jpg/.png) of a headshot or profile photo — NOT a search page or gallery page. Must load in an <img> tag. null if none found.",
   "linkedin": "Full LinkedIn profile URL, or null",
   "instagram": "Instagram handle (without @), or null",
   "other_socials": ["Twitter/X URL", "Facebook URL", "other profile URLs"],

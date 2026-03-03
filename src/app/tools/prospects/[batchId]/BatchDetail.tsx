@@ -114,6 +114,25 @@ function AvatarPlaceholder() {
 }
 
 // ---------------------------------------------------------------------------
+// Photo with error fallback
+// ---------------------------------------------------------------------------
+
+function ProspectPhoto({ url, name }: { url: string | null; name: string }) {
+  const [failed, setFailed] = useState(false);
+
+  if (!url || failed) return <AvatarPlaceholder />;
+
+  return (
+    <img
+      src={url}
+      alt={name}
+      className="h-full w-full object-cover"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Contact icons
 // ---------------------------------------------------------------------------
 
@@ -712,15 +731,7 @@ export default function BatchDetail({
                 <div className="flex gap-3">
                   {/* Photo */}
                   <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
-                    {prospect.photo_url ? (
-                      <img
-                        src={prospect.photo_url}
-                        alt={name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <AvatarPlaceholder />
-                    )}
+                    <ProspectPhoto url={prospect.photo_url} name={name} />
                   </div>
 
                   {/* Content */}
