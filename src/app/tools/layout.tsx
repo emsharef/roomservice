@@ -47,6 +47,7 @@ export default async function ToolsLayout({
       <div className="border-b border-gray-200">
         <nav className="mx-auto flex max-w-7xl gap-6 px-4 sm:px-6 lg:px-8">
           <ToolsTab href="/tools/scan">Card Scanner</ToolsTab>
+          <ToolsTab href="/tools/prospects">Prospect Research</ToolsTab>
         </nav>
       </div>
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
