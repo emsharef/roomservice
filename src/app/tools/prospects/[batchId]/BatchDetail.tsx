@@ -454,9 +454,15 @@ export default function BatchDetail({
         );
 
         try {
+          // Use AbortController with 120s timeout to prevent mobile Safari killing the fetch
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 120_000);
+
           const res = await fetch(`/api/prospects/research/${prospect.id}`, {
             method: "POST",
+            signal: controller.signal,
           });
+          clearTimeout(timeout);
 
           if (!res.ok) {
             const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
@@ -509,6 +515,25 @@ export default function BatchDetail({
             }),
           );
         } catch (e) {
+          // The fetch may have timed out on the client, but the server may have completed.
+          // Re-check the prospect's actual status from the DB before marking as error.
+          try {
+            await delay(3000); // give the server a moment to finish if still running
+            const checkRes = await fetch(`/api/prospects/research/${prospect.id}`);
+            if (checkRes.ok) {
+              const { prospect: dbProspect } = await checkRes.json();
+              if (dbProspect && dbProspect.status === "done") {
+                // Server completed successfully — use the DB data
+                setProspects((prev) =>
+                  prev.map((p) => (p.id === prospect.id ? { ...dbProspect } : p)),
+                );
+                continue; // skip the error state, move to next prospect
+              }
+            }
+          } catch {
+            // Status check itself failed — fall through to error state
+          }
+
           setProspects((prev) =>
             prev.map((p) =>
               p.id === prospect.id

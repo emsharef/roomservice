@@ -5,6 +5,33 @@ import { enrichProspect } from "@/lib/enrichment";
 
 export const maxDuration = 120;
 
+// GET — lightweight status check for a single prospect
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const admin = createAdminClient();
+  const { data: prospect } = await admin
+    .from("prospects")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (!prospect) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({ prospect });
+}
+
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
