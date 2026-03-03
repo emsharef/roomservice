@@ -566,7 +566,132 @@ export async function enrichProspect(
       );
   }
 
+  // If no photo_url or it doesn't look like a direct image, try the two-step approach
+  if (!enrichment.photo_url || !looksLikeImageUrl(enrichment.photo_url)) {
+    const name = enrichment.display_name || prospect.input_name;
+    const context = [enrichment.title, enrichment.company].filter(Boolean).join(", ");
+    const photo = await findPersonPhoto(name, context);
+    if (photo) {
+      enrichment.photo_url = photo;
+    }
+  }
+
   return enrichment;
+}
+
+// ---------------------------------------------------------------------------
+// Photo finder — two-step approach
+// ---------------------------------------------------------------------------
+
+const IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|gif)(\?.*)?$/i;
+
+function looksLikeImageUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return IMAGE_EXTENSIONS.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Find a person's photo via two steps:
+ * 1. Web search to find a page that has their headshot
+ * 2. Fetch the page HTML and use Claude to extract the actual <img src> URL
+ */
+async function findPersonPhoto(name: string, context: string): Promise<string | null> {
+  try {
+    // Step 1: Find a page with their photo
+    const searchResponse = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1024,
+      tools: [{ type: "web_search_20250305" as any, name: "web_search", max_uses: 3 }],
+      messages: [{
+        role: "user",
+        content: `Find a webpage that has a profile photo or headshot of ${name}${context ? ` (${context})` : ""}.
+
+Look for: institutional "about" or "team" pages, conference speaker bios, university/museum staff pages, press releases with author photos, Wikipedia.
+
+Return ONLY JSON: {"page_url": "https://..."}
+Return {"page_url": null} if no suitable page found.`,
+      }],
+    });
+
+    // Extract the page URL from the response
+    const textBlocks = searchResponse.content.filter(
+      (b): b is Anthropic.TextBlock => b.type === "text",
+    );
+    const searchText = textBlocks[textBlocks.length - 1]?.text || "{}";
+    const pageMatch = searchText.match(/\{[\s\S]*\}/);
+    if (!pageMatch) return null;
+
+    const { page_url } = JSON.parse(pageMatch[0]);
+    if (!page_url) return null;
+
+    // Step 2: Fetch the page and extract the image URL
+    const res = await fetch(page_url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+
+    const html = await res.text();
+    // Keep first 50K chars to fit in context
+    const truncated = html.length > 50_000 ? html.substring(0, 50_000) : html;
+
+    const extractResponse = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 512,
+      messages: [{
+        role: "user",
+        content: `Extract the profile photo URL for ${name} from this HTML.
+
+Look for <img> tags with src attributes related to their name, "headshot", "portrait", "profile", "staff", "author", "speaker", or similar. Also check <meta property="og:image">.
+
+Rules:
+- URL must end in .jpg, .jpeg, .png, .webp, or .gif
+- Convert relative URLs to absolute using base: ${page_url}
+- Skip tiny icons, logos, or decorative images
+- Prefer the largest/most prominent person photo
+
+Return ONLY JSON: {"photo_url": "https://direct-url.jpg"} or {"photo_url": null}
+
+HTML:
+${truncated}`,
+      }],
+    });
+
+    const extractText = extractResponse.content.find(
+      (b): b is Anthropic.TextBlock => b.type === "text",
+    )?.text || "{}";
+    const extractMatch = extractText.match(/\{[\s\S]*\}/);
+    if (!extractMatch) return null;
+
+    const { photo_url } = JSON.parse(extractMatch[0]);
+    if (!photo_url || !looksLikeImageUrl(photo_url)) return null;
+
+    // Verify the URL is reachable
+    try {
+      const check = await fetch(photo_url, {
+        method: "HEAD",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!check.ok) return null;
+      const contentType = check.headers.get("content-type") || "";
+      if (!contentType.startsWith("image/")) return null;
+    } catch {
+      return null; // Can't verify — skip
+    }
+
+    return photo_url;
+  } catch {
+    return null; // Don't let photo finding break the enrichment
+  }
 }
 
 // ---------------------------------------------------------------------------
