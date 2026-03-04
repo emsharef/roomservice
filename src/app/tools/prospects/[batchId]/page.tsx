@@ -22,7 +22,7 @@ export default async function BatchDetailPage({
     .from("prospects")
     .select("*")
     .eq("batch_id", batchId)
-    .order("created_at", { ascending: true });
+    .order("display_name", { ascending: true });
 
   return (
     <BatchDetail

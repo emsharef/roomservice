@@ -55,6 +55,7 @@ interface Prospect {
 }
 
 type StatusFilter = "all" | "done" | "error" | "parsed";
+type SortKey = "name" | "company" | "location" | "confidence" | "status" | "created";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -428,6 +429,7 @@ export default function BatchDetail({
   // Local state
   const [prospects, setProspects] = useState<Prospect[]>(initialProspects);
   const [filter, setFilter] = useState<StatusFilter>("all");
+  const [sortBy, setSortBy] = useState<SortKey>("name");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Track broken photo URLs detected by <img> onError
@@ -450,11 +452,35 @@ export default function BatchDetail({
     gaps: prospects.filter((p) => p.status === "done" && (!p.photo_url || !p.email || brokenPhotoIds.has(p.id))).length,
   };
 
-  // Filtered prospects
-  const filtered =
+  // Filtered + sorted prospects
+  const filtered = (
     filter === "all"
       ? prospects
-      : prospects.filter((p) => p.status === filter);
+      : prospects.filter((p) => p.status === filter)
+  ).slice().sort((a, b) => {
+    switch (sortBy) {
+      case "name":
+        return displayName(a).localeCompare(displayName(b));
+      case "company":
+        return (a.company || "").localeCompare(b.company || "");
+      case "location":
+        return (a.location || "").localeCompare(b.location || "");
+      case "confidence": {
+        const order = { high: 0, medium: 1, low: 2 };
+        const ac = a.confidence ? order[a.confidence] : 3;
+        const bc = b.confidence ? order[b.confidence] : 3;
+        return ac - bc;
+      }
+      case "status": {
+        const sOrder = { done: 0, researching: 1, parsed: 2, error: 3, skipped: 4 };
+        return (sOrder[a.status] ?? 5) - (sOrder[b.status] ?? 5);
+      }
+      case "created":
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      default:
+        return 0;
+    }
+  });
 
   // ------ Research loop ------
 
@@ -786,28 +812,46 @@ export default function BatchDetail({
         </div>
       )}
 
-      {/* Status filter tabs */}
-      <div className="mb-4 flex gap-1 border-b border-gray-200">
-        {filterTabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setFilter(tab.key)}
-            className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-              filter === tab.key
-                ? "border-gray-900 text-gray-900"
-                : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
-            }`}
-          >
-            {tab.label}{" "}
-            <span
-              className={`ml-1 rounded-full px-1.5 py-0.5 text-xs ${
-                filter === tab.key ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-500"
+      {/* Status filter tabs + sort */}
+      <div className="mb-4 flex items-center justify-between border-b border-gray-200">
+        <div className="flex gap-1">
+          {filterTabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setFilter(tab.key)}
+              className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                filter === tab.key
+                  ? "border-gray-900 text-gray-900"
+                  : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
               }`}
             >
-              {tab.count}
-            </span>
-          </button>
-        ))}
+              {tab.label}{" "}
+              <span
+                className={`ml-1 rounded-full px-1.5 py-0.5 text-xs ${
+                  filter === tab.key ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-500"
+                }`}
+              >
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-1.5 pb-1 text-sm text-gray-500">
+          <span>Sort:</span>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortKey)}
+            className="rounded border border-gray-200 bg-white px-2 py-1 text-sm text-gray-700 focus:border-gray-400 focus:outline-none"
+          >
+            <option value="name">Name</option>
+            <option value="company">Company</option>
+            <option value="location">Location</option>
+            <option value="confidence">Confidence</option>
+            <option value="status">Status</option>
+            <option value="created">Date Added</option>
+          </select>
+        </div>
       </div>
 
       {/* Card grid */}
