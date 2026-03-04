@@ -18,7 +18,9 @@ Gallery overview:
 
 You have tools to search and query the gallery database. Use them to answer questions with specific data rather than general knowledge. When referencing records, always include links using the display_title field from search results, in the format [display_title](/inventory/ID), [Name](/artists/ID), or [Name](/contacts/ID). For artworks, always use the display_title (which includes artist, title, and year) rather than just the title field.
 
-Be concise and gallery-professional. When presenting search results, summarize the key findings rather than listing every field. Highlight what's most relevant to the question asked.`;
+Be concise and gallery-professional. When presenting search results, summarize the key findings rather than listing every field. Highlight what's most relevant to the question asked.
+
+When you want to show search results visually as cards (with images, tags, etc.), include <<results>> on its own line in your response. This will render the tool results as a visual card grid. Only use this when the results are directly relevant to what the user asked — don't show cards for intermediate lookups or when you're just gathering context. Place <<results>> where you want the cards to appear in your response.`;
 
 // Extract displayable card data from tool results
 function extractCards(toolName: string, result: Record<string, unknown>): unknown[] | null {

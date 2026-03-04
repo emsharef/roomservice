@@ -615,28 +615,50 @@ export default function ChatPage() {
           /* Messages */
           <div className="flex-1 overflow-y-auto px-4 py-6">
             <div className="mx-auto max-w-3xl space-y-4">
-              {messages.map((msg, i) => (
-                <div key={i}>
-                  <div
-                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                        msg.role === "user"
-                          ? "bg-gray-900 text-white"
-                          : "bg-gray-100 text-gray-800"
-                      }`}
-                    >
-                      {msg.role === "assistant" ? renderMarkdown(msg.content) : msg.content}
+              {messages.map((msg, i) => {
+                if (msg.role === "user") {
+                  return (
+                    <div key={i} className="flex justify-end">
+                      <div className="max-w-[85%] rounded-2xl bg-gray-900 px-4 py-3 text-sm leading-relaxed text-white">
+                        {msg.content}
+                      </div>
                     </div>
+                  );
+                }
+
+                // Assistant message — split on <<results>> marker
+                const hasCards = msg.cards && msg.cards.length > 0 && msg.content.includes("<<results>>");
+                if (!hasCards) {
+                  return (
+                    <div key={i} className="flex justify-start">
+                      <div className="max-w-[85%] rounded-2xl bg-gray-100 px-4 py-3 text-sm leading-relaxed text-gray-800">
+                        {renderMarkdown(msg.content.replace(/<<results>>/g, ""))}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Split content around <<results>> markers
+                const parts = msg.content.split("<<results>>");
+                return (
+                  <div key={i} className="space-y-2">
+                    {parts.map((part, pi) => (
+                      <div key={pi}>
+                        {part.trim() && (
+                          <div className="flex justify-start">
+                            <div className="max-w-[85%] rounded-2xl bg-gray-100 px-4 py-3 text-sm leading-relaxed text-gray-800">
+                              {renderMarkdown(part)}
+                            </div>
+                          </div>
+                        )}
+                        {pi < parts.length - 1 && msg.cards && (
+                          <ResultCards cards={msg.cards} />
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  {msg.cards && msg.cards.length > 0 && (
-                    <div className="mt-2 max-w-[95%]">
-                      <ResultCards cards={msg.cards} />
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
 
               {/* Tool status indicators */}
               {toolStatuses.length > 0 && (
