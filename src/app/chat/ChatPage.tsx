@@ -321,18 +321,6 @@ function renderInline(text: string): React.ReactNode {
 }
 
 // ---------------------------------------------------------------------------
-// Strip trailing incomplete <<card: marker during streaming
-// ---------------------------------------------------------------------------
-
-function stripTrailingPartialMarker(text: string): string {
-  const lastOpen = text.lastIndexOf("<<card:");
-  if (lastOpen === -1) return text;
-  const closeAfter = text.indexOf(">>", lastOpen);
-  if (closeAfter === -1) return text.slice(0, lastOpen);
-  return text;
-}
-
-// ---------------------------------------------------------------------------
 // Spinner
 // ---------------------------------------------------------------------------
 
@@ -480,21 +468,21 @@ function AssistantMessage({ content, cardMap }: { content: string; cardMap?: Map
       segments.push({ type: "text", value: textBefore });
     }
 
-    // Look up card by link path — exact match, then fragment-stripped match
+    // Look up card by link path — try exact match, then strip fragment, then fuzzy
     const path = match[1];
     let card = cardMap.get(path);
     if (!card) {
-      // Try stripping fragment (for prospect links like /tools/prospects/BATCH#p-UUID)
+      // Try stripping fragment from path or key
       const pathBase = path.split("#")[0];
       for (const [key, c] of cardMap) {
-        if (key.split("#")[0] === pathBase) {
+        const keyBase = key.split("#")[0];
+        if (key === path || keyBase === pathBase || key.startsWith(path) || path.startsWith(key)) {
           card = c;
           break;
         }
       }
     }
-    // Deduplicate — don't add same card twice
-    if (card && !pendingCards.some((pc) => pc.link === card!.link)) {
+    if (card) {
       pendingCards.push(card);
     }
 
@@ -560,10 +548,7 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
   const [toolStatuses, setToolStatuses] = useState<string[]>([]);
-  const [streamingContent, setStreamingContent] = useState("");
   const pendingCardsRef = useRef<Map<string, ResultCard>>(new Map());
-  const streamingTargetRef = useRef("");
-  const streamingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -573,23 +558,10 @@ export default function ChatPage() {
     fetchConversations();
   }, []);
 
-  // Scroll to bottom on new messages or streaming content
+  // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, statusText, streamingContent]);
-
-  // Progressive text reveal — reveals streamingTargetRef content gradually
-  useEffect(() => {
-    const target = streamingTargetRef.current;
-    if (!target || streamingContent.length >= target.length) return;
-    streamingTimerRef.current = setTimeout(() => {
-      const nextLen = Math.min(streamingContent.length + 20, target.length);
-      setStreamingContent(target.slice(0, nextLen));
-    }, 15);
-    return () => {
-      if (streamingTimerRef.current) clearTimeout(streamingTimerRef.current);
-    };
-  }, [streamingContent]);
+  }, [messages, statusText]);
 
   // Focus input when starting a new chat (not when loading saved ones)
   useEffect(() => {
@@ -688,9 +660,6 @@ export default function ChatPage() {
       setStreaming(true);
       setStatusText(null);
       setToolStatuses([]);
-      setStreamingContent("");
-      streamingTargetRef.current = "";
-      if (streamingTimerRef.current) clearTimeout(streamingTimerRef.current);
       pendingCardsRef.current = new Map();
 
       try {
@@ -740,21 +709,8 @@ export default function ChatPage() {
                   setStatusText(null);
                   break;
 
-                case "delta":
-                  // Store full text in ref, kick off progressive reveal
-                  streamingTargetRef.current += data.text;
-                  setStreamingContent((prev) => {
-                    if (prev === "") return streamingTargetRef.current.slice(0, 20);
-                    return prev; // useEffect handles ongoing reveal
-                  });
-                  setStatusText(null);
-                  setToolStatuses([]);
-                  break;
-
                 case "assistant": {
-                  // Stop progressive reveal, show final message with cards
-                  if (streamingTimerRef.current) clearTimeout(streamingTimerRef.current);
-                  streamingTargetRef.current = "";
+                  // Build cardMap from cards sent with assistant event (primary) + any accumulated from tool_results (fallback)
                   const cardMap = new Map<string, ResultCard>(pendingCardsRef.current);
                   if (data.cards && Array.isArray(data.cards)) {
                     for (const card of data.cards) {
@@ -765,7 +721,6 @@ export default function ChatPage() {
                     ...prev,
                     { role: "assistant", content: data.content, cardMap: cardMap.size > 0 ? cardMap : undefined },
                   ]);
-                  setStreamingContent("");
                   pendingCardsRef.current = new Map();
                   setStatusText(null);
                   break;
@@ -961,18 +916,8 @@ export default function ChatPage() {
                 );
               })}
 
-              {/* Streaming assistant response — renders inline cards as markers complete */}
-              {streaming && streamingContent && (
-                <div>
-                  <AssistantMessage
-                    content={stripTrailingPartialMarker(streamingContent)}
-                    cardMap={pendingCardsRef.current.size > 0 ? pendingCardsRef.current : undefined}
-                  />
-                </div>
-              )}
-
               {/* Tool status indicators */}
-              {toolStatuses.length > 0 && !streamingContent && (
+              {toolStatuses.length > 0 && (
                 <div className="flex justify-start">
                   <div className="text-xs italic text-gray-400">
                     {toolStatuses.map((s, i) => (
@@ -983,7 +928,7 @@ export default function ChatPage() {
               )}
 
               {/* Streaming status */}
-              {streaming && statusText && !streamingContent && (
+              {streaming && statusText && (
                 <div className="flex justify-start">
                   <div className="flex items-center gap-2 text-xs italic text-gray-400">
                     <Spinner className="h-3 w-3" />
@@ -992,8 +937,8 @@ export default function ChatPage() {
                 </div>
               )}
 
-              {/* Thinking indicator — only before any content arrives */}
-              {streaming && !statusText && !streamingContent && toolStatuses.length === 0 && messages[messages.length - 1]?.role === "user" && (
+              {/* Streaming indicator (no specific status) */}
+              {streaming && !statusText && messages[messages.length - 1]?.role === "user" && (
                 <div className="flex justify-start">
                   <div className="flex items-center gap-2 rounded-2xl bg-gray-100 px-4 py-3 text-sm text-gray-400">
                     <Spinner className="h-3.5 w-3.5" />
