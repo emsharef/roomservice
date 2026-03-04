@@ -110,25 +110,15 @@ function renderInline(text: string): React.ReactNode {
       const href = match[2];
       const isInternal = href.startsWith("/");
       parts.push(
-        isInternal ? (
-          <Link
-            key={match.index}
-            href={href}
-            className="text-blue-600 underline hover:text-blue-800"
-          >
-            {match[1]}
-          </Link>
-        ) : (
-          <a
-            key={match.index}
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 underline hover:text-blue-800"
-          >
-            {match[1]}
-          </a>
-        ),
+        <a
+          key={match.index}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 underline hover:text-blue-800"
+        >
+          {match[1]}
+        </a>,
       );
     } else if (match[3]) {
       // Bold — recursively render inline content (handles links inside bold)
