@@ -272,7 +272,72 @@ async function executeSearchContacts(
   input: Record<string, unknown>,
 ): Promise<{ result: unknown; summary: string }> {
   const limit = Math.min(Number(input.limit) || 10, 20);
+  const hasPreferenceFilter = (input.style_preferences && Array.isArray(input.style_preferences)) ||
+    (input.subject_preferences && Array.isArray(input.subject_preferences));
 
+  // If filtering by preferences, start from contacts_extended to avoid missing matches
+  if (hasPreferenceFilter) {
+    let query = admin
+      .from("contacts_extended")
+      .select("contact_id, style_preferences, subject_preferences, mood_preferences, engagement_level")
+      .not("style_preferences", "eq", "{}");
+
+    // Use overlaps filter for array columns
+    if (input.style_preferences && Array.isArray(input.style_preferences)) {
+      query = query.overlaps("style_preferences", input.style_preferences as string[]);
+    }
+    if (input.subject_preferences && Array.isArray(input.subject_preferences)) {
+      query = query.overlaps("subject_preferences", input.subject_preferences as string[]);
+    }
+
+    const { data: extended, error: extError } = await query.limit(100);
+    if (extError) return { result: { error: extError.message }, summary: "Search failed" };
+    if (!extended || extended.length === 0) return { result: { count: 0, contacts: [] }, summary: "Found 0 contacts" };
+
+    // Fetch contact details for matches
+    const matchIds = extended.map((e) => e.contact_id);
+    const { data: contacts } = await admin
+      .from("contacts")
+      .select("id, first_name, last_name, display_name, email, company, type, tags, primary_city, primary_state, primary_country")
+      .in("id", matchIds);
+
+    const contactMap = new Map((contacts || []).map((c) => [c.id, c]));
+    let results = extended.map((ext) => {
+      const c = contactMap.get(ext.contact_id);
+      return {
+        id: ext.contact_id,
+        display_name: c?.display_name || [c?.first_name, c?.last_name].filter(Boolean).join(" ") || "Unknown",
+        email: c?.email,
+        company: c?.company,
+        location: [c?.primary_city, c?.primary_state, c?.primary_country].filter(Boolean).join(", "),
+        type: c?.type,
+        tags: c?.tags || [],
+        style_preferences: ext.style_preferences || [],
+        subject_preferences: ext.subject_preferences || [],
+        mood_preferences: ext.mood_preferences || [],
+        engagement_level: ext.engagement_level || null,
+        link: `/contacts/${ext.contact_id}`,
+      };
+    });
+
+    // Apply name/location filters if also specified
+    if (input.query && typeof input.query === "string") {
+      const q = input.query.toLowerCase();
+      results = results.filter((c: any) => c.display_name.toLowerCase().includes(q) || c.company?.toLowerCase().includes(q));
+    }
+    if (input.location && typeof input.location === "string") {
+      const loc = (input.location as string).toLowerCase();
+      results = results.filter((c: any) => c.location.toLowerCase().includes(loc));
+    }
+
+    results = results.slice(0, limit);
+    return {
+      result: { count: results.length, contacts: results },
+      summary: `Found ${results.length} contacts with matching preferences`,
+    };
+  }
+
+  // Standard search via RPC (name, location, type filters)
   const { data, error } = await admin.rpc("search_contacts", {
     filter_name: (input.query as string) || null,
     filter_email: null,
@@ -290,11 +355,10 @@ async function executeSearchContacts(
   const contactIds = (data || []).map((c: any) => c.id);
   let enrichments: Record<number, any> = {};
 
-  // Fetch enrichment data for matching contacts
   if (contactIds.length > 0) {
     const { data: extended } = await admin
       .from("contacts_extended")
-      .select("contact_id, collector_brief, inferred_preferences")
+      .select("contact_id, style_preferences, subject_preferences, mood_preferences, engagement_level")
       .in("contact_id", contactIds);
 
     if (extended) {
@@ -304,9 +368,8 @@ async function executeSearchContacts(
     }
   }
 
-  let results = (data || []).map((c: any) => {
+  const results = (data || []).map((c: any) => {
     const ext = enrichments[c.id];
-    const prefs = ext?.inferred_preferences || {};
     return {
       id: c.id,
       display_name: c.display_name || [c.first_name, c.last_name].filter(Boolean).join(" "),
@@ -315,25 +378,13 @@ async function executeSearchContacts(
       location: [c.primary_city, c.primary_state, c.primary_country].filter(Boolean).join(", "),
       type: c.type,
       tags: c.tags || [],
-      style_preferences: prefs.style_preferences || [],
-      subject_preferences: prefs.subject_preferences || [],
-      mood_preferences: prefs.mood_preferences || [],
-      engagement_level: prefs.engagement_level || null,
+      style_preferences: ext?.style_preferences || [],
+      subject_preferences: ext?.subject_preferences || [],
+      mood_preferences: ext?.mood_preferences || [],
+      engagement_level: ext?.engagement_level || null,
       link: `/contacts/${c.id}`,
     };
   });
-
-  // Filter by preference tags if specified
-  if (input.style_preferences && Array.isArray(input.style_preferences)) {
-    results = results.filter((c: any) =>
-      (input.style_preferences as string[]).some((t: string) => c.style_preferences.includes(t)),
-    );
-  }
-  if (input.subject_preferences && Array.isArray(input.subject_preferences)) {
-    results = results.filter((c: any) =>
-      (input.subject_preferences as string[]).some((t: string) => c.subject_preferences.includes(t)),
-    );
-  }
 
   return {
     result: { count: results.length, contacts: results },
@@ -538,15 +589,14 @@ async function executeFindMatches(
   } else if (source_type === "contact") {
     const { data } = await admin
       .from("contacts_extended")
-      .select("inferred_preferences")
+      .select("style_preferences, subject_preferences, mood_preferences")
       .eq("contact_id", source_id)
       .single();
-    if (data?.inferred_preferences) {
-      const prefs = data.inferred_preferences;
+    if (data) {
       sourceTags = {
-        style: prefs.style_preferences || [],
-        subject: prefs.subject_preferences || [],
-        mood: prefs.mood_preferences || [],
+        style: data.style_preferences || [],
+        subject: data.subject_preferences || [],
+        mood: data.mood_preferences || [],
       };
     }
   }
@@ -559,16 +609,15 @@ async function executeFindMatches(
   if (target_type === "contact") {
     const { data: contacts } = await admin
       .from("contacts_extended")
-      .select("contact_id, inferred_preferences")
-      .not("inferred_preferences", "is", null);
+      .select("contact_id, style_preferences, subject_preferences, mood_preferences")
+      .not("style_preferences", "eq", "{}");
 
     if (!contacts) return { result: { matches: [] }, summary: "No enriched contacts found" };
 
     const scored = contacts.map((c) => {
-      const prefs = c.inferred_preferences || {};
-      const styleOverlap = (prefs.style_preferences || []).filter((t: string) => sourceTags.style.includes(t));
-      const subjectOverlap = (prefs.subject_preferences || []).filter((t: string) => sourceTags.subject.includes(t));
-      const moodOverlap = (prefs.mood_preferences || []).filter((t: string) => sourceTags.mood.includes(t));
+      const styleOverlap = (c.style_preferences || []).filter((t: string) => sourceTags.style.includes(t));
+      const subjectOverlap = (c.subject_preferences || []).filter((t: string) => sourceTags.subject.includes(t));
+      const moodOverlap = (c.mood_preferences || []).filter((t: string) => sourceTags.mood.includes(t));
       const score = styleOverlap.length * 3 + subjectOverlap.length * 2 + moodOverlap.length;
       return { contact_id: c.contact_id, score, matching_tags: { style: styleOverlap, subject: subjectOverlap, mood: moodOverlap } };
     }).filter((c) => c.score > 0).sort((a, b) => b.score - a.score).slice(0, limit);
