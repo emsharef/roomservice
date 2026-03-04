@@ -460,7 +460,7 @@ export default function BatchDetail({
   ).slice().sort((a, b) => {
     switch (sortBy) {
       case "name":
-        return displayName(a).localeCompare(displayName(b));
+        return (a.last_name || displayName(a)).localeCompare(b.last_name || displayName(b));
       case "company":
         return (a.company || "").localeCompare(b.company || "");
       case "location":
