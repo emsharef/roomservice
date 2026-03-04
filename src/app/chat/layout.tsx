@@ -24,5 +24,9 @@ export default async function ChatLayout({
     redirect("/");
   }
 
-  return <>{children}</>;
+  return (
+    <div className="-mx-4 -my-8 sm:-mx-6 lg:-mx-8">
+      {children}
+    </div>
+  );
 }

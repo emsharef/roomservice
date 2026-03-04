@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, DM_Serif_Display } from "next/font/google";
 import Nav from "@/components/Nav";
 import "./globals.css";
@@ -9,6 +9,10 @@ const dmSerif = DM_Serif_Display({ weight: "400", subsets: ["latin"], variable: 
 export const metadata: Metadata = {
   title: "Room Service",
   description: "AI-powered companion for gallery management",
+};
+
+export const viewport: Viewport = {
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({
