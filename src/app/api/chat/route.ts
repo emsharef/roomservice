@@ -273,6 +273,8 @@ export async function POST(request: NextRequest) {
         // Agentic tool-use loop
         let loopMessages = [...messages];
         let maxLoops = 10;
+        // Accumulate card data across tool calls for the final assistant message
+        const accumulatedCards: Record<string, unknown> = {};
 
         while (maxLoops-- > 0) {
           const response = await anthropic.messages.create({
@@ -317,8 +319,14 @@ export async function POST(request: NextRequest) {
                 content: JSON.stringify(result),
               });
 
-              // Send displayable card data indexed by link path
+              // Extract and accumulate displayable card data
               const cards = extractCards(toolCall.name, result as Record<string, unknown>);
+              if (cards) {
+                for (const card of cards) {
+                  const c = card as Record<string, unknown>;
+                  if (c.link) accumulatedCards[c.link as string] = c;
+                }
+              }
               send({ type: "tool_result", tool: toolCall.name, summary, cards });
             }
 
@@ -332,7 +340,7 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          // Final text response — stream it
+          // Final text response — send with accumulated card data
           const finalText = textBlocks.map((b) => b.text).join("\n");
 
           if (finalText) {
@@ -343,7 +351,8 @@ export async function POST(request: NextRequest) {
               content: finalText,
             });
 
-            send({ type: "assistant", content: finalText });
+            const cardArray = Object.values(accumulatedCards);
+            send({ type: "assistant", content: finalText, cards: cardArray.length > 0 ? cardArray : null });
           }
 
           // Auto-title: if this is the first exchange (no title yet)

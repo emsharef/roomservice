@@ -655,14 +655,22 @@ export default function ChatPage() {
                   setStatusText(null);
                   break;
 
-                case "assistant":
+                case "assistant": {
+                  // Build cardMap from cards sent with assistant event (primary) + any accumulated from tool_results (fallback)
+                  const cardMap = new Map<string, ResultCard>(pendingCardsRef.current);
+                  if (data.cards && Array.isArray(data.cards)) {
+                    for (const card of data.cards) {
+                      if (card.link) cardMap.set(card.link, card);
+                    }
+                  }
                   setMessages((prev) => [
                     ...prev,
-                    { role: "assistant", content: data.content, cardMap: pendingCardsRef.current.size > 0 ? new Map(pendingCardsRef.current) : undefined },
+                    { role: "assistant", content: data.content, cardMap: cardMap.size > 0 ? cardMap : undefined },
                   ]);
                   pendingCardsRef.current = new Map();
                   setStatusText(null);
                   break;
+                }
 
                 case "title":
                   // Update conversation title in sidebar
