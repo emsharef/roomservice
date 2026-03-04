@@ -438,12 +438,24 @@ function AssistantMessage({ content, cardMap }: { content: string; cardMap?: Map
   // Split content into segments: text and <<card:/path>> markers
   const cardPattern = /<<card:(\/[^>]+)>>/g;
 
-  if (!cardMap || cardMap.size === 0 || !cardPattern.test(content)) {
+  const hasMarkers = cardPattern.test(content);
+  cardPattern.lastIndex = 0;
+
+  if (!cardMap || cardMap.size === 0 || !hasMarkers) {
     // No cards — render as plain assistant bubble, strip any stray markers
+    const strippedMarkers = content.match(/<<card:\/[^>]+>>/g);
     return (
       <div className="flex justify-start">
         <div className="max-w-[85%] rounded-2xl bg-gray-100 px-4 py-3 text-sm leading-relaxed text-gray-800">
           {renderMarkdown(content.replace(/<<card:\/[^>]+>>/g, ""))}
+          {/* Debug info */}
+          {(strippedMarkers || (cardMap && cardMap.size > 0)) && (
+            <div className="mt-2 rounded bg-amber-50 p-2 text-[10px] text-amber-700">
+              <p>🔍 Debug: {strippedMarkers ? `${strippedMarkers.length} marker(s) stripped` : "no markers"} | cardMap: {cardMap?.size ?? 0} entries</p>
+              {strippedMarkers && <p>Markers: {strippedMarkers.join(", ")}</p>}
+              {cardMap && cardMap.size > 0 && <p>Cards: {[...cardMap.keys()].join(", ")}</p>}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -484,6 +496,15 @@ function AssistantMessage({ content, cardMap }: { content: string; cardMap?: Map
     }
     if (card) {
       pendingCards.push(card);
+    } else {
+      // Debug: show unmatched marker path
+      pendingCards.push({
+        type: "artwork",
+        id: "missing",
+        title: `⚠ Card not found: ${path}`,
+        subtitle: `cardMap has ${cardMap.size} entries: ${[...cardMap.keys()].slice(0, 5).join(", ")}${cardMap.size > 5 ? "..." : ""}`,
+        link: path,
+      });
     }
 
     lastIndex = match.index + match[0].length;
