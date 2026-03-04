@@ -13,11 +13,28 @@ interface Conversation {
   updated_at: string;
 }
 
+interface ResultCard {
+  type: "artwork" | "contact" | "artist" | "prospect";
+  id: string | number;
+  title: string;
+  subtitle?: string;
+  image?: string;
+  price?: number;
+  status?: string;
+  email?: string;
+  tags?: string[];
+  engagement?: string;
+  location?: string;
+  workCount?: number;
+  link: string;
+}
+
 interface Message {
   id?: string;
   role: "user" | "assistant" | "tool_call" | "tool_result";
   content: string;
   tool_data?: { name: string; input: unknown; result: unknown } | null;
+  cards?: ResultCard[];
   created_at?: string;
 }
 
@@ -158,6 +175,103 @@ function Spinner({ className = "h-4 w-4" }: { className?: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Result cards
+// ---------------------------------------------------------------------------
+
+function ResultCards({ cards }: { cards: ResultCard[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const preview = cards.slice(0, 4);
+  const shown = expanded ? cards : preview;
+  const hasMore = cards.length > 4;
+
+  return (
+    <div className="mt-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+        {shown.map((card, i) => (
+          <a
+            key={`${card.id}-${i}`}
+            href={card.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group block overflow-hidden rounded-lg border border-gray-200 bg-white transition-shadow hover:shadow-md"
+          >
+            {card.type === "artwork" && (
+              <div className="aspect-square overflow-hidden bg-gray-100">
+                {card.image ? (
+                  <img
+                    src={card.image}
+                    alt={card.title}
+                    className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                    loading="lazy"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-xs text-gray-400">No image</div>
+                )}
+              </div>
+            )}
+            <div className="p-2">
+              <p className="truncate text-xs font-medium text-gray-900">{card.title}</p>
+              {card.subtitle && (
+                <p className="truncate text-xs text-gray-500">{card.subtitle}</p>
+              )}
+              {card.price != null && (
+                <p className="mt-0.5 text-xs font-medium text-gray-700">
+                  ${card.price.toLocaleString()}
+                </p>
+              )}
+              {card.status && card.type === "artwork" && (
+                <span className={`mt-0.5 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                  card.status === "available" ? "bg-green-50 text-green-700" :
+                  card.status === "sold" ? "bg-red-50 text-red-600" :
+                  "bg-gray-100 text-gray-600"
+                }`}>
+                  {card.status}
+                </span>
+              )}
+              {card.email && (
+                <p className="truncate text-xs text-gray-500">{card.email}</p>
+              )}
+              {card.location && card.type === "prospect" && (
+                <p className="truncate text-xs text-gray-500">{card.location}</p>
+              )}
+              {card.engagement && (
+                <span className="mt-0.5 inline-block rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
+                  {card.engagement.replace(/_/g, " ")}
+                </span>
+              )}
+              {card.tags && card.tags.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-0.5">
+                  {card.tags.slice(0, 3).map((tag) => (
+                    <span key={tag} className="rounded bg-sky-50 px-1 py-0.5 text-[10px] text-sky-700">
+                      {tag}
+                    </span>
+                  ))}
+                  {card.tags.length > 3 && (
+                    <span className="text-[10px] text-gray-400">+{card.tags.length - 3}</span>
+                  )}
+                </div>
+              )}
+              {card.workCount != null && (
+                <p className="mt-0.5 text-xs text-gray-500">{card.workCount} works</p>
+              )}
+            </div>
+          </a>
+        ))}
+      </div>
+      {hasMore && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="mt-1.5 text-xs text-gray-500 hover:text-gray-700"
+        >
+          {expanded ? "Show less" : `Show all ${cards.length} results`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Time formatting
 // ---------------------------------------------------------------------------
 
@@ -190,6 +304,7 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
   const [toolStatuses, setToolStatuses] = useState<string[]>([]);
+  const pendingCardsRef = useRef<ResultCard[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -272,6 +387,7 @@ export default function ChatPage() {
       setStreaming(true);
       setStatusText(null);
       setToolStatuses([]);
+      pendingCardsRef.current = [];
 
       try {
         const res = await fetch("/api/chat", {
@@ -312,14 +428,18 @@ export default function ChatPage() {
 
                 case "tool_result":
                   setToolStatuses((prev) => [...prev, data.summary]);
+                  if (data.cards && Array.isArray(data.cards)) {
+                    pendingCardsRef.current = [...pendingCardsRef.current, ...data.cards];
+                  }
                   setStatusText(null);
                   break;
 
                 case "assistant":
                   setMessages((prev) => [
                     ...prev,
-                    { role: "assistant", content: data.content },
+                    { role: "assistant", content: data.content, cards: pendingCardsRef.current.length > 0 ? [...pendingCardsRef.current] : undefined },
                   ]);
+                  pendingCardsRef.current = [];
                   setStatusText(null);
                   break;
 
@@ -496,19 +616,25 @@ export default function ChatPage() {
           <div className="flex-1 overflow-y-auto px-4 py-6">
             <div className="mx-auto max-w-3xl space-y-4">
               {messages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                >
+                <div key={i}>
                   <div
-                    className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                      msg.role === "user"
-                        ? "bg-gray-900 text-white"
-                        : "bg-gray-100 text-gray-800"
-                    }`}
+                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                   >
-                    {msg.role === "assistant" ? renderMarkdown(msg.content) : msg.content}
+                    <div
+                      className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                        msg.role === "user"
+                          ? "bg-gray-900 text-white"
+                          : "bg-gray-100 text-gray-800"
+                      }`}
+                    >
+                      {msg.role === "assistant" ? renderMarkdown(msg.content) : msg.content}
+                    </div>
                   </div>
+                  {msg.cards && msg.cards.length > 0 && (
+                    <div className="mt-2 max-w-[95%]">
+                      <ResultCards cards={msg.cards} />
+                    </div>
+                  )}
                 </div>
               ))}
 

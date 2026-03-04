@@ -20,6 +20,110 @@ You have tools to search and query the gallery database. Use them to answer ques
 
 Be concise and gallery-professional. When presenting search results, summarize the key findings rather than listing every field. Highlight what's most relevant to the question asked.`;
 
+// Extract displayable card data from tool results
+function extractCards(toolName: string, result: Record<string, unknown>): unknown[] | null {
+  if (toolName === "search_artworks") {
+    const artworks = result.artworks as any[];
+    if (!artworks?.length) return null;
+    return artworks.map((a) => ({
+      type: "artwork",
+      id: a.id,
+      title: a.display_title || a.title || "Untitled",
+      subtitle: [a.medium, a.year].filter(Boolean).join(", "),
+      image: a.primary_image_url,
+      price: a.price,
+      status: a.status,
+      link: a.link,
+    }));
+  }
+
+  if (toolName === "find_similar_artworks") {
+    const artworks = result.similar_artworks as any[];
+    if (!artworks?.length) return null;
+    return artworks.map((a) => ({
+      type: "artwork",
+      id: a.id,
+      title: a.display_title || a.title || "Untitled",
+      subtitle: [a.medium, a.year].filter(Boolean).join(", "),
+      image: a.primary_image_url,
+      price: a.price,
+      status: a.status,
+      link: a.link,
+    }));
+  }
+
+  if (toolName === "find_matches") {
+    const matches = result.matches as any[];
+    if (!matches?.length) return null;
+    // Could be artworks or contacts
+    if (matches[0].primary_image_url || matches[0].medium) {
+      return matches.map((a) => ({
+        type: "artwork",
+        id: a.id,
+        title: a.display_title || a.title || "Untitled",
+        subtitle: [a.medium, a.year].filter(Boolean).join(", "),
+        image: a.primary_image_url,
+        price: a.price,
+        status: a.status,
+        link: a.link,
+      }));
+    }
+    return matches.map((c) => ({
+      type: "contact",
+      id: c.id,
+      title: c.display_name,
+      subtitle: [c.company, c.location].filter(Boolean).join(" · "),
+      tags: c.matching_tags?.style || c.style_preferences || [],
+      link: c.link,
+    }));
+  }
+
+  if (toolName === "search_contacts") {
+    const contacts = result.contacts as any[];
+    if (!contacts?.length) return null;
+    return contacts.map((c) => ({
+      type: "contact",
+      id: c.id,
+      title: c.display_name,
+      subtitle: [c.company, c.location].filter(Boolean).join(" · "),
+      email: c.email,
+      tags: c.style_preferences || [],
+      engagement: c.engagement_level,
+      link: c.link,
+    }));
+  }
+
+  if (toolName === "search_artists") {
+    const artists = result.artists as any[];
+    if (!artists?.length) return null;
+    return artists.map((a) => ({
+      type: "artist",
+      id: a.id,
+      title: a.display_name,
+      subtitle: [a.country, a.life_dates].filter(Boolean).join(" · "),
+      workCount: a.work_count,
+      link: a.link,
+    }));
+  }
+
+  if (toolName === "search_prospects") {
+    const prospects = result.prospects as any[];
+    if (!prospects?.length) return null;
+    return prospects.map((p) => ({
+      type: "prospect",
+      id: p.id,
+      title: p.display_name,
+      subtitle: [p.title, p.company].filter(Boolean).join(", "),
+      location: p.location,
+      tags: p.style_preferences || [],
+      engagement: p.engagement_level,
+      link: p.link,
+    }));
+  }
+
+  return null;
+}
+
 // POST — send message and stream response
 export async function POST(request: NextRequest) {
   // Auth check
@@ -161,7 +265,9 @@ export async function POST(request: NextRequest) {
                 content: JSON.stringify(result),
               });
 
-              send({ type: "tool_result", tool: toolCall.name, summary });
+              // Send displayable cards to client
+              const cards = extractCards(toolCall.name, result as Record<string, unknown>);
+              send({ type: "tool_result", tool: toolCall.name, summary, cards });
             }
 
             // Continue the loop with tool results
