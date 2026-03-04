@@ -238,10 +238,23 @@ async function executeSearchArtworks(
   };
 }
 
+function artworkDisplayTitle(row: any): string {
+  const parts: string[] = [];
+  if (row.artist_names) parts.push(row.artist_names);
+  const titlePart = row.title || "Untitled";
+  if (row.year) {
+    parts.push(`${titlePart}, ${row.year}`);
+  } else {
+    parts.push(titlePart);
+  }
+  return parts.join(" — ");
+}
+
 function formatArtworkResult(row: any) {
   return {
     id: row.id,
     title: row.title,
+    display_title: artworkDisplayTitle(row),
     artist_names: row.artist_names || null,
     year: row.year,
     medium: row.medium,
@@ -408,14 +421,16 @@ async function executeGetRecord(
         .select("artist_id, display_name")
         .eq("artwork_id", id);
 
+      const artistNames = (artistLinks || []).map((a: any) => a.display_name).join(", ");
       return {
         result: {
           ...artwork,
+          display_title: artworkDisplayTitle({ title: artwork.title, artist_names: artistNames, year: artwork.year }),
           ai_analysis: extended || null,
           artists: artistLinks || [],
           link: `/inventory/${id}`,
         },
-        summary: `Fetched artwork: ${artwork.title || "Untitled"} (ID ${id})`,
+        summary: `Fetched artwork: ${artworkDisplayTitle({ title: artwork.title, artist_names: artistNames, year: artwork.year })}`,
       };
     }
     case "artist": {
@@ -625,10 +640,12 @@ async function executeFindMatches(
 
     const matches = scored.map((s) => {
       const a = detailMap.get(s.artwork_id);
+      const artist_names = artistMap.get(s.artwork_id)?.join(", ") || null;
       return {
         id: s.artwork_id,
         title: a?.title,
-        artist_names: artistMap.get(s.artwork_id)?.join(", ") || null,
+        display_title: artworkDisplayTitle({ title: a?.title, artist_names, year: a?.year }),
+        artist_names,
         year: a?.year,
         medium: a?.medium,
         price: a?.price,
@@ -688,6 +705,7 @@ async function executeFindSimilarArtworks(
     .map((r: any) => ({
       id: r.id,
       title: r.title,
+      display_title: artworkDisplayTitle(r),
       artist_names: r.artist_names,
       year: r.year,
       medium: r.medium,
