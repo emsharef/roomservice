@@ -383,7 +383,7 @@ export default function ChatPage() {
   // ------ Render ------
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden">
+    <div className="flex h-[calc(100dvh-64px)] overflow-hidden">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
