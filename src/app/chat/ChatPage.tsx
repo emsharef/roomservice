@@ -480,21 +480,21 @@ function AssistantMessage({ content, cardMap }: { content: string; cardMap?: Map
       segments.push({ type: "text", value: textBefore });
     }
 
-    // Look up card by link path — try exact match, then strip fragment, then fuzzy
+    // Look up card by link path — exact match, then fragment-stripped match
     const path = match[1];
     let card = cardMap.get(path);
     if (!card) {
-      // Try stripping fragment from path or key
+      // Try stripping fragment (for prospect links like /tools/prospects/BATCH#p-UUID)
       const pathBase = path.split("#")[0];
       for (const [key, c] of cardMap) {
-        const keyBase = key.split("#")[0];
-        if (key === path || keyBase === pathBase || key.startsWith(path) || path.startsWith(key)) {
+        if (key.split("#")[0] === pathBase) {
           card = c;
           break;
         }
       }
     }
-    if (card) {
+    // Deduplicate — don't add same card twice
+    if (card && !pendingCards.some((pc) => pc.link === card!.link)) {
       pendingCards.push(card);
     }
 

@@ -344,10 +344,13 @@ export async function POST(request: NextRequest) {
           const finalText = textBlocks.map((b) => b.text).join("\n");
 
           if (finalText) {
-            // Stream text in chunks for progressive rendering
+            // Stream text in chunks with delays for progressive rendering
             const CHUNK = 20;
             for (let i = 0; i < finalText.length; i += CHUNK) {
               send({ type: "delta", text: finalText.slice(i, i + CHUNK) });
+              if (i + CHUNK < finalText.length) {
+                await new Promise((r) => setTimeout(r, 15));
+              }
             }
 
             // Save assistant message
