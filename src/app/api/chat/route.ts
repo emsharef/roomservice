@@ -20,7 +20,7 @@ You have tools to search and query the gallery database. Use them to answer ques
 
 Be concise and gallery-professional. When presenting search results, summarize the key findings rather than listing every field. Highlight what's most relevant to the question asked.
 
-When you want to show search results visually as cards (with images, tags, etc.), include <<results>> on its own line in your response. This will render the tool results as a visual card grid. Only use this when the results are directly relevant to what the user asked — don't show cards for intermediate lookups or when you're just gathering context. Place <<results>> where you want the cards to appear in your response.`;
+You can display any result as a visual card (with image, tags, price, etc.) by writing <<card:/inventory/ID>>, <<card:/artists/ID>>, <<card:/contacts/ID>>, or <<card:/tools/prospects/BATCH_ID>> using the record's link path. Use cards to highlight key results visually — for example, top recommendations or specific artworks you're drawing attention to. Use regular markdown links [text](/path) for simple references or long lists. You can mix cards and text freely.`;
 
 // Extract displayable card data from tool results
 function extractCards(toolName: string, result: Record<string, unknown>): unknown[] | null {
@@ -267,7 +267,7 @@ export async function POST(request: NextRequest) {
                 content: JSON.stringify(result),
               });
 
-              // Send displayable cards to client
+              // Send displayable card data indexed by link path
               const cards = extractCards(toolCall.name, result as Record<string, unknown>);
               send({ type: "tool_result", tool: toolCall.name, summary, cards });
             }

@@ -34,7 +34,7 @@ interface Message {
   role: "user" | "assistant" | "tool_call" | "tool_result";
   content: string;
   tool_data?: { name: string; input: unknown; result: unknown } | null;
-  cards?: ResultCard[];
+  cardMap?: Map<string, ResultCard>;
   created_at?: string;
 }
 
@@ -271,6 +271,84 @@ function ResultCards({ cards }: { cards: ResultCard[] }) {
   );
 }
 
+function AssistantMessage({ content, cardMap }: { content: string; cardMap?: Map<string, ResultCard> }) {
+  // Split content into segments: text and <<card:/path>> markers
+  const cardPattern = /<<card:(\/[^>]+)>>/g;
+
+  if (!cardMap || cardMap.size === 0 || !cardPattern.test(content)) {
+    // No cards — render as plain assistant bubble, strip any stray markers
+    return (
+      <div className="flex justify-start">
+        <div className="max-w-[85%] rounded-2xl bg-gray-100 px-4 py-3 text-sm leading-relaxed text-gray-800">
+          {renderMarkdown(content.replace(/<<card:\/[^>]+>>/g, ""))}
+        </div>
+      </div>
+    );
+  }
+
+  // Split on card markers, collecting both text and card paths
+  const segments: Array<{ type: "text"; value: string } | { type: "cards"; cards: ResultCard[] }> = [];
+  let lastIndex = 0;
+  let match;
+  let pendingCards: ResultCard[] = [];
+  cardPattern.lastIndex = 0;
+
+  while ((match = cardPattern.exec(content)) !== null) {
+    // Text before this marker
+    const textBefore = content.slice(lastIndex, match.index);
+    if (textBefore.trim()) {
+      // Flush any pending cards before text
+      if (pendingCards.length > 0) {
+        segments.push({ type: "cards", cards: [...pendingCards] });
+        pendingCards = [];
+      }
+      segments.push({ type: "text", value: textBefore });
+    }
+
+    // Look up card by link path
+    const path = match[1];
+    const card = cardMap.get(path);
+    if (card) {
+      pendingCards.push(card);
+    } else {
+      // Try partial match (prospect links use batch path)
+      for (const [key, c] of cardMap) {
+        if (key.startsWith(path) || path.startsWith(key)) {
+          pendingCards.push(c);
+          break;
+        }
+      }
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Remaining text
+  const remaining = content.slice(lastIndex);
+  if (pendingCards.length > 0) {
+    segments.push({ type: "cards", cards: [...pendingCards] });
+  }
+  if (remaining.trim()) {
+    segments.push({ type: "text", value: remaining });
+  }
+
+  return (
+    <div className="space-y-2">
+      {segments.map((seg, i) =>
+        seg.type === "text" ? (
+          <div key={i} className="flex justify-start">
+            <div className="max-w-[85%] rounded-2xl bg-gray-100 px-4 py-3 text-sm leading-relaxed text-gray-800">
+              {renderMarkdown(seg.value)}
+            </div>
+          </div>
+        ) : (
+          <ResultCards key={i} cards={seg.cards} />
+        ),
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Time formatting
 // ---------------------------------------------------------------------------
@@ -304,7 +382,7 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
   const [toolStatuses, setToolStatuses] = useState<string[]>([]);
-  const pendingCardsRef = useRef<ResultCard[]>([]);
+  const pendingCardsRef = useRef<Map<string, ResultCard>>(new Map());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -387,7 +465,7 @@ export default function ChatPage() {
       setStreaming(true);
       setStatusText(null);
       setToolStatuses([]);
-      pendingCardsRef.current = [];
+      pendingCardsRef.current = new Map();
 
       try {
         const res = await fetch("/api/chat", {
@@ -429,7 +507,9 @@ export default function ChatPage() {
                 case "tool_result":
                   setToolStatuses((prev) => [...prev, data.summary]);
                   if (data.cards && Array.isArray(data.cards)) {
-                    pendingCardsRef.current = [...pendingCardsRef.current, ...data.cards];
+                    for (const card of data.cards) {
+                      if (card.link) pendingCardsRef.current.set(card.link, card);
+                    }
                   }
                   setStatusText(null);
                   break;
@@ -437,9 +517,9 @@ export default function ChatPage() {
                 case "assistant":
                   setMessages((prev) => [
                     ...prev,
-                    { role: "assistant", content: data.content, cards: pendingCardsRef.current.length > 0 ? [...pendingCardsRef.current] : undefined },
+                    { role: "assistant", content: data.content, cardMap: pendingCardsRef.current.size > 0 ? new Map(pendingCardsRef.current) : undefined },
                   ]);
-                  pendingCardsRef.current = [];
+                  pendingCardsRef.current = new Map();
                   setStatusText(null);
                   break;
 
@@ -626,36 +706,9 @@ export default function ChatPage() {
                   );
                 }
 
-                // Assistant message — split on <<results>> marker
-                const hasCards = msg.cards && msg.cards.length > 0 && msg.content.includes("<<results>>");
-                if (!hasCards) {
-                  return (
-                    <div key={i} className="flex justify-start">
-                      <div className="max-w-[85%] rounded-2xl bg-gray-100 px-4 py-3 text-sm leading-relaxed text-gray-800">
-                        {renderMarkdown(msg.content.replace(/<<results>>/g, ""))}
-                      </div>
-                    </div>
-                  );
-                }
-
-                // Split content around <<results>> markers
-                const parts = msg.content.split("<<results>>");
                 return (
-                  <div key={i} className="space-y-2">
-                    {parts.map((part, pi) => (
-                      <div key={pi}>
-                        {part.trim() && (
-                          <div className="flex justify-start">
-                            <div className="max-w-[85%] rounded-2xl bg-gray-100 px-4 py-3 text-sm leading-relaxed text-gray-800">
-                              {renderMarkdown(part)}
-                            </div>
-                          </div>
-                        )}
-                        {pi < parts.length - 1 && msg.cards && (
-                          <ResultCards cards={msg.cards} />
-                        )}
-                      </div>
-                    ))}
+                  <div key={i}>
+                    <AssistantMessage content={msg.content} cardMap={msg.cardMap} />
                   </div>
                 );
               })}
