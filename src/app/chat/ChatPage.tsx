@@ -160,6 +160,14 @@ const EXAMPLES = [
 // Markdown-lite renderer (bold, links, lists)
 // ---------------------------------------------------------------------------
 
+function parseTableRow(line: string): string[] {
+  return line.split("|").slice(1, -1).map((cell) => cell.trim());
+}
+
+function isTableSeparator(line: string): boolean {
+  return /^\|[\s:-]+(\|[\s:-]+)+\|?\s*$/.test(line);
+}
+
 function renderMarkdown(text: string) {
   // Safety net: strip any remaining <<card:...>> markers
   text = text.replace(/<<card:\/[^>]+>>/g, "");
@@ -183,6 +191,50 @@ function renderMarkdown(text: string) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+
+    // Detect markdown tables: header row | separator row | data rows
+    if (
+      line.trim().startsWith("|") &&
+      i + 1 < lines.length &&
+      isTableSeparator(lines[i + 1])
+    ) {
+      flushList();
+      const headers = parseTableRow(line);
+      i++; // skip separator
+      const rows: string[][] = [];
+      while (i + 1 < lines.length && lines[i + 1].trim().startsWith("|")) {
+        i++;
+        rows.push(parseTableRow(lines[i]));
+      }
+      elements.push(
+        <div key={`table-${i}`} className="my-2 overflow-x-auto">
+          <table className="min-w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-300">
+                {headers.map((h, hi) => (
+                  <th key={hi} className="px-2 py-1.5 text-left font-semibold text-gray-700">
+                    {renderInline(h)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, ri) => (
+                <tr key={ri} className="border-b border-gray-100">
+                  {row.map((cell, ci) => (
+                    <td key={ci} className="px-2 py-1 text-gray-600">
+                      {renderInline(cell)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      continue;
+    }
+
     const listMatch = line.match(/^[-*]\s+(.+)/);
     const numListMatch = line.match(/^\d+\.\s+(.+)/);
 
