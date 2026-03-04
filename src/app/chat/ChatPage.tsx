@@ -191,6 +191,7 @@ export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [loadingConvs, setLoadingConvs] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Messages
   const [messages, setMessages] = useState<Message[]>([]);
@@ -256,6 +257,7 @@ export default function ChatPage() {
     setMessages([]);
     setToolStatuses([]);
     setInput("");
+    setSidebarOpen(false);
     inputRef.current?.focus();
   }
 
@@ -381,17 +383,39 @@ export default function ChatPage() {
   // ------ Render ------
 
   return (
-    <div className="flex h-[calc(100vh-64px)]">
+    <div className="flex h-[calc(100vh-64px)] overflow-hidden">
+      {/* Mobile sidebar backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-20 bg-black/30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <div className="flex w-72 flex-col border-r border-gray-200 bg-gray-50">
+      <div
+        className={`fixed inset-y-0 left-0 top-16 z-30 flex w-72 flex-col border-r border-gray-200 bg-gray-50 transition-transform duration-200 md:static md:z-auto md:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
           <h2 className="text-sm font-semibold text-gray-700">Conversations</h2>
-          <button
-            onClick={startNewChat}
-            className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-800"
-          >
-            New Chat
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={startNewChat}
+              className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-800"
+            >
+              New Chat
+            </button>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="rounded p-1 text-gray-400 hover:text-gray-600 md:hidden"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -408,7 +432,10 @@ export default function ChatPage() {
                 className={`group flex cursor-pointer items-center justify-between px-4 py-3 transition-colors hover:bg-gray-100 ${
                   activeConvId === conv.id ? "bg-white shadow-sm" : ""
                 }`}
-                onClick={() => loadConversation(conv.id)}
+                onClick={() => {
+                  loadConversation(conv.id);
+                  setSidebarOpen(false);
+                }}
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-gray-900">
@@ -434,15 +461,30 @@ export default function ChatPage() {
       </div>
 
       {/* Main chat area */}
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Mobile header with sidebar toggle */}
+        <div className="flex items-center border-b border-gray-200 px-4 py-2 md:hidden">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+          </button>
+          <span className="ml-2 text-sm font-medium text-gray-700">
+            {activeConvId ? conversations.find((c) => c.id === activeConvId)?.title || "Chat" : "New Chat"}
+          </span>
+        </div>
+
         {messages.length === 0 && !activeConvId ? (
           /* Empty state */
-          <div className="flex flex-1 flex-col items-center justify-center px-8">
+          <div className="flex flex-1 flex-col items-center justify-center px-4 sm:px-8">
             <h1 className="mb-2 text-2xl font-bold text-gray-900">Room Service Chat</h1>
             <p className="mb-8 text-sm text-gray-500">
               Ask questions about artworks, artists, and collectors in your gallery.
             </p>
-            <div className="grid max-w-2xl grid-cols-2 gap-3">
+            <div className="grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
               {EXAMPLES.map((example, i) => (
                 <button
                   key={i}
