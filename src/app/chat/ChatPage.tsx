@@ -567,7 +567,7 @@ export default function ChatPage() {
               placeholder="Ask about artworks, artists, or collectors..."
               rows={1}
               disabled={streaming}
-              className="flex-1 resize-none rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none disabled:opacity-50"
+              className="flex-1 resize-none rounded-lg border border-gray-300 px-4 py-2.5 text-base text-gray-900 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none disabled:opacity-50 sm:text-sm"
               style={{ maxHeight: "120px" }}
               onInput={(e) => {
                 const el = e.currentTarget;
