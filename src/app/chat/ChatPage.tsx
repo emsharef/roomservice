@@ -268,6 +268,7 @@ export default function ChatPage() {
       const userMessage: Message = { role: "user", content: text.trim() };
       setMessages((prev) => [...prev, userMessage]);
       setInput("");
+      inputRef.current?.blur();
       setStreaming(true);
       setStatusText(null);
       setToolStatuses([]);
