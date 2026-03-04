@@ -562,6 +562,8 @@ export default function ChatPage() {
   const [toolStatuses, setToolStatuses] = useState<string[]>([]);
   const [streamingContent, setStreamingContent] = useState("");
   const pendingCardsRef = useRef<Map<string, ResultCard>>(new Map());
+  const streamingTargetRef = useRef("");
+  const streamingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -575,6 +577,19 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, statusText, streamingContent]);
+
+  // Progressive text reveal — reveals streamingTargetRef content gradually
+  useEffect(() => {
+    const target = streamingTargetRef.current;
+    if (!target || streamingContent.length >= target.length) return;
+    streamingTimerRef.current = setTimeout(() => {
+      const nextLen = Math.min(streamingContent.length + 20, target.length);
+      setStreamingContent(target.slice(0, nextLen));
+    }, 15);
+    return () => {
+      if (streamingTimerRef.current) clearTimeout(streamingTimerRef.current);
+    };
+  }, [streamingContent]);
 
   // Focus input when starting a new chat (not when loading saved ones)
   useEffect(() => {
@@ -674,6 +689,8 @@ export default function ChatPage() {
       setStatusText(null);
       setToolStatuses([]);
       setStreamingContent("");
+      streamingTargetRef.current = "";
+      if (streamingTimerRef.current) clearTimeout(streamingTimerRef.current);
       pendingCardsRef.current = new Map();
 
       try {
@@ -724,14 +741,20 @@ export default function ChatPage() {
                   break;
 
                 case "delta":
-                  // Progressive text chunk — append to streaming content
-                  setStreamingContent((prev) => prev + data.text);
+                  // Store full text in ref, kick off progressive reveal
+                  streamingTargetRef.current += data.text;
+                  setStreamingContent((prev) => {
+                    if (prev === "") return streamingTargetRef.current.slice(0, 20);
+                    return prev; // useEffect handles ongoing reveal
+                  });
                   setStatusText(null);
                   setToolStatuses([]);
                   break;
 
                 case "assistant": {
-                  // Complete message with cards — replaces streaming bubble
+                  // Stop progressive reveal, show final message with cards
+                  if (streamingTimerRef.current) clearTimeout(streamingTimerRef.current);
+                  streamingTargetRef.current = "";
                   const cardMap = new Map<string, ResultCard>(pendingCardsRef.current);
                   if (data.cards && Array.isArray(data.cards)) {
                     for (const card of data.cards) {
