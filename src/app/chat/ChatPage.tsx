@@ -246,6 +246,8 @@ function renderMarkdown(text: string) {
       flushList();
       if (line.trim() === "") {
         elements.push(<br key={`br-${i}`} />);
+      } else if (/^---+$/.test(line.trim()) || /^\*\*\*+$/.test(line.trim())) {
+        elements.push(<hr key={`hr-${i}`} className="my-2 border-gray-200" />);
       } else if (line.startsWith("### ")) {
         elements.push(
           <h4 key={`h-${i}`} className="mt-2 mb-1 font-semibold">
