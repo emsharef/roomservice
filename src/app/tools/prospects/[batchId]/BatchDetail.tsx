@@ -117,7 +117,7 @@ function AvatarPlaceholder() {
 // Photo with error fallback
 // ---------------------------------------------------------------------------
 
-function ProspectPhoto({ url, name }: { url: string | null; name: string }) {
+function ProspectPhoto({ url, name, onFailed }: { url: string | null; name: string; onFailed?: () => void }) {
   const [failed, setFailed] = useState(false);
 
   if (!url || failed) return <AvatarPlaceholder />;
@@ -128,7 +128,10 @@ function ProspectPhoto({ url, name }: { url: string | null; name: string }) {
       alt={name}
       className="h-full w-full object-cover"
       referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
+      onError={() => {
+        setFailed(true);
+        onFailed?.();
+      }}
     />
   );
 }
@@ -427,6 +430,9 @@ export default function BatchDetail({
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // Track broken photo URLs detected by <img> onError
+  const [brokenPhotoIds, setBrokenPhotoIds] = useState<Set<string>>(new Set());
+
   // Research loop state
   const [running, setRunning] = useState(false);
   const [runMode, setRunMode] = useState<"research" | "fill-gaps">("research");
@@ -441,7 +447,7 @@ export default function BatchDetail({
     done: prospects.filter((p) => p.status === "done").length,
     error: prospects.filter((p) => p.status === "error").length,
     parsed: prospects.filter((p) => p.status === "parsed").length,
-    gaps: prospects.filter((p) => p.status === "done" && (!p.photo_url || !p.email)).length,
+    gaps: prospects.filter((p) => p.status === "done" && (!p.photo_url || !p.email || brokenPhotoIds.has(p.id))).length,
   };
 
   // Filtered prospects
@@ -603,7 +609,7 @@ export default function BatchDetail({
 
   const runFillGaps = useCallback(async () => {
     const targets = prospects.filter(
-      (p) => p.status === "done" && (!p.photo_url || !p.email),
+      (p) => p.status === "done" && (!p.photo_url || !p.email || brokenPhotoIds.has(p.id)),
     );
     if (targets.length === 0) return;
 
@@ -667,7 +673,7 @@ export default function BatchDetail({
     setRunning(false);
     setCurrentProspect(null);
     router.refresh();
-  }, [prospects, router]);
+  }, [prospects, router, brokenPhotoIds]);
 
   // ------ Render ------
 
@@ -823,7 +829,11 @@ export default function BatchDetail({
                 <div className="flex gap-3">
                   {/* Photo */}
                   <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
-                    <ProspectPhoto url={prospect.photo_url} name={name} />
+                    <ProspectPhoto
+                      url={prospect.photo_url}
+                      name={name}
+                      onFailed={() => setBrokenPhotoIds((prev) => new Set(prev).add(prospect.id))}
+                    />
                   </div>
 
                   {/* Content */}

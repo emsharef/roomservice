@@ -628,9 +628,28 @@ export async function fillProspectGaps(
   const name = prospect.display_name || prospect.input_name;
   const missing: string[] = [];
   if (!prospect.email) missing.push("email");
-  if (!prospect.photo_url) missing.push("photo_url");
   if (!prospect.phone) missing.push("phone");
   if (!prospect.instagram) missing.push("instagram");
+
+  // Check if existing photo URL is dead
+  let photoMissing = !prospect.photo_url;
+  if (prospect.photo_url && !photoMissing) {
+    try {
+      const photoCheck = await fetch(prospect.photo_url, {
+        method: "GET",
+        signal: AbortSignal.timeout(8_000),
+        redirect: "follow",
+        headers: { "User-Agent": "Mozilla/5.0" },
+      });
+      const ct = photoCheck.headers.get("content-type") || "";
+      if (!photoCheck.ok || !ct.includes("image")) {
+        photoMissing = true;
+      }
+    } catch {
+      photoMissing = true;
+    }
+  }
+  if (photoMissing) missing.push("photo_url");
 
   if (missing.length === 0) {
     return { updated: false, fields: {} };
@@ -696,7 +715,7 @@ Rules:
     if (result.email && !prospect.email && typeof result.email === "string" && result.email.includes("@")) {
       updates.email = result.email;
     }
-    if (result.photo_url && !prospect.photo_url && typeof result.photo_url === "string" && result.photo_url.startsWith("http")) {
+    if (result.photo_url && photoMissing && typeof result.photo_url === "string" && result.photo_url.startsWith("http")) {
       // Verify the photo URL actually works
       try {
         const photoRes = await fetch(result.photo_url, {
