@@ -340,10 +340,16 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          // Final text response — send with accumulated card data
+          // Final text response — stream progressively, then send complete with cards
           const finalText = textBlocks.map((b) => b.text).join("\n");
 
           if (finalText) {
+            // Stream text in chunks for progressive rendering
+            const CHUNK = 20;
+            for (let i = 0; i < finalText.length; i += CHUNK) {
+              send({ type: "delta", text: finalText.slice(i, i + CHUNK) });
+            }
+
             // Save assistant message
             await admin.from("chat_messages").insert({
               conversation_id: convId,
@@ -351,6 +357,7 @@ export async function POST(request: NextRequest) {
               content: finalText,
             });
 
+            // Send complete message with cards (replaces streaming bubble)
             const cardArray = Object.values(accumulatedCards);
             send({ type: "assistant", content: finalText, cards: cardArray.length > 0 ? cardArray : null });
           }
