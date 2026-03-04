@@ -297,7 +297,7 @@ function renderInline(text: string): React.ReactNode {
           rel="noopener noreferrer"
           className="text-blue-600 underline hover:text-blue-800"
         >
-          {match[1]}
+          {renderInline(match[1])}
         </a>,
       );
     } else if (match[3]) {
