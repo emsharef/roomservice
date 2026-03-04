@@ -366,15 +366,17 @@ export async function POST(request: NextRequest) {
             try {
               const titleResponse = await anthropic.messages.create({
                 model: "claude-haiku-4-5-20251001",
-                max_tokens: 30,
+                max_tokens: 12,
+                system: "You generate short titles for conversations. Respond with ONLY the title — 3 to 5 words, no quotes, no punctuation, no explanation.",
                 messages: [
                   {
                     role: "user",
-                    content: `Summarize this conversation in 3-5 words as a short title (no quotes, no punctuation):\n\nUser: ${message}\nAssistant: ${finalText.substring(0, 200)}`,
+                    content: `User asked: ${message.substring(0, 150)}`,
                   },
                 ],
               });
-              const title = (titleResponse.content[0] as Anthropic.TextBlock)?.text?.trim();
+              const raw = (titleResponse.content[0] as Anthropic.TextBlock)?.text?.trim();
+              const title = raw?.replace(/^#+\s*/, "").replace(/[.!?:]+$/, "").substring(0, 60);
               if (title) {
                 await admin
                   .from("chat_conversations")
