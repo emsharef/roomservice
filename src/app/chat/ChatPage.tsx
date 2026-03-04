@@ -95,8 +95,9 @@ function renderMarkdown(text: string) {
 function renderInline(text: string): React.ReactNode {
   // Handle bold, links, and inline code
   const parts: React.ReactNode[] = [];
-  // Regex: markdown links [text](url) or **bold** or `code`
-  const regex = /\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|`([^`]+)`/g;
+  // Regex: markdown links [text](url) or **bold content** or `code`
+  // Links must come before bold in alternation so [link](url) inside **bold** gets caught
+  const regex = /\[([^\]]+)\]\(([^)]+)\)|\*\*(.+?)\*\*|`([^`]+)`/g;
   let lastIndex = 0;
   let match;
 
@@ -130,8 +131,8 @@ function renderInline(text: string): React.ReactNode {
         ),
       );
     } else if (match[3]) {
-      // Bold
-      parts.push(<strong key={match.index}>{match[3]}</strong>);
+      // Bold — recursively render inline content (handles links inside bold)
+      parts.push(<strong key={match.index}>{renderInline(match[3])}</strong>);
     } else if (match[4]) {
       // Code
       parts.push(
