@@ -204,9 +204,9 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, statusText]);
 
-  // Focus input when conversation changes
+  // Focus input when starting a new chat (not when loading saved ones)
   useEffect(() => {
-    inputRef.current?.focus();
+    if (!activeConvId) inputRef.current?.focus();
   }, [activeConvId]);
 
   async function fetchConversations() {
