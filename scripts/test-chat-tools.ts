@@ -166,6 +166,44 @@ const tests: Array<{ name: string; tool: string; input: Record<string, unknown>;
     input: { entity: "artists", group_by: "country" },
     check: (r) => r.result.breakdown ? null : "Expected breakdown object",
   },
+
+  // --- search_prospects ---
+  {
+    name: "Search all prospects",
+    tool: "search_prospects",
+    input: {},
+    check: (r) => r.result.count > 0 ? null : "Expected some prospects",
+  },
+  {
+    name: "Search prospects with style preference",
+    tool: "search_prospects",
+    input: { style_preferences: ["abstract"] },
+    check: (r) => {
+      if (r.result.count === 0) return "Expected prospects with abstract preference";
+      const bad = r.result.prospects.filter((p: any) => !p.style_preferences.includes("abstract"));
+      return bad.length > 0 ? `${bad.length} prospects lack 'abstract' preference` : null;
+    },
+  },
+  {
+    name: "Search prospects by engagement level",
+    tool: "search_prospects",
+    input: { engagement_level: "active_collector" },
+    check: (r) => r.result.count >= 0 ? null : "Unexpected error",
+  },
+  {
+    name: "Search prospects returns expected fields",
+    tool: "search_prospects",
+    input: { limit: 1 },
+    check: (r) => {
+      if (r.result.count === 0) return "No prospects found";
+      const p = r.result.prospects[0];
+      if (!p.id) return "Missing id";
+      if (!p.display_name) return "Missing display_name";
+      if (!p.link) return "Missing link";
+      if (!p.batch_name) return "Missing batch_name";
+      return null;
+    },
+  },
 ];
 
 async function main() {

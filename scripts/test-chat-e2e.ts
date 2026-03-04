@@ -138,6 +138,29 @@ const tests: TestCase[] = [
     expectedTools: ["get_stats", "search_artworks", "search_artists"],
     expectedInResponse: [],
   },
+
+  // --- Prospect queries ---
+  {
+    name: "Browse prospects",
+    question: "Show me our researched prospects",
+    expectedTools: ["search_prospects"],
+    expectedInResponse: [],
+    expectLinks: true,
+  },
+  {
+    name: "Prospect preference search",
+    question: "Which prospects are interested in abstract art?",
+    expectedTools: ["search_prospects"],
+    expectedInResponse: ["abstract"],
+    expectLinks: true,
+  },
+  {
+    name: "Prospect for artist matching",
+    question: "Which of our prospects might be interested in the work of Camilla Engström?",
+    expectedTools: ["search_prospects", "search_artists", "search_artworks"],
+    expectedInResponse: [],
+    expectLinks: true,
+  },
 ];
 
 async function runAgenticLoop(question: string): Promise<{

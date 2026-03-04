@@ -115,6 +115,36 @@ export const CHAT_TOOLS = [
       required: ["entity"],
     },
   },
+  {
+    name: "search_prospects",
+    description:
+      "Search prospective collectors from research batches. Prospects are people the gallery has researched as potential collectors — they may not yet be CRM contacts. Search by name, company, location, art preferences, or engagement level. Use this when users ask about prospects, leads, or potential collectors.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query: { type: "string", description: "Search by name or company" },
+        location: { type: "string", description: "Filter by location" },
+        style_preferences: { type: "array", items: { type: "string" }, description: "Filter by art style preferences (e.g., 'abstract', 'figurative')" },
+        subject_preferences: { type: "array", items: { type: "string" }, description: "Filter by subject preferences" },
+        engagement_level: { type: "string", enum: ["active_collector", "casual_buyer", "institutional", "unknown"], description: "Filter by collector engagement level" },
+        batch_name: { type: "string", description: "Filter by research batch name" },
+        limit: { type: "number", description: "Max results (default 10, max 20)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_prospect",
+    description:
+      "Fetch full detail for a specific prospect by ID, including their research brief, art world connections, collection profile, and sources. Use this when you need the complete research profile for a prospect.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string", description: "Prospect UUID" },
+      },
+      required: ["id"],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -142,6 +172,10 @@ export async function executeTool(
       return executeFindSimilarArtworks(admin, input);
     case "get_stats":
       return executeGetStats(admin, input);
+    case "search_prospects":
+      return executeSearchProspects(admin, input);
+    case "get_prospect":
+      return executeGetProspect(admin, input);
     default:
       return { result: { error: `Unknown tool: ${name}` }, summary: `Unknown tool: ${name}` };
   }
@@ -849,4 +883,129 @@ async function executeGetStats(
   }
 
   return { result: { error: `Unsupported group_by "${groupBy}" for ${entity}` }, summary: "Unsupported grouping" };
+}
+
+async function executeSearchProspects(
+  admin: SupabaseAdmin,
+  input: Record<string, unknown>,
+): Promise<{ result: unknown; summary: string }> {
+  const limit = Math.min(Number(input.limit) || 10, 20);
+  const hasPreferenceFilter = (input.style_preferences && Array.isArray(input.style_preferences)) ||
+    (input.subject_preferences && Array.isArray(input.subject_preferences));
+
+  let query = admin
+    .from("prospects")
+    .select("id, batch_id, display_name, first_name, last_name, email, phone, company, title, location, photo_url, linkedin, instagram, research_summary, confidence, style_preferences, subject_preferences, mood_preferences, known_artists, engagement_level, board_memberships, collection_mentions, status")
+    .eq("status", "done");
+
+  // Name/company search
+  if (input.query && typeof input.query === "string") {
+    const q = input.query.trim();
+    query = query.or(`display_name.ilike.%${q}%,company.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%`);
+  }
+
+  // Location filter
+  if (input.location && typeof input.location === "string") {
+    query = query.ilike("location", `%${input.location}%`);
+  }
+
+  // Engagement level filter
+  if (input.engagement_level && typeof input.engagement_level === "string") {
+    query = query.eq("engagement_level", input.engagement_level);
+  }
+
+  // Preference filters using overlaps
+  if (input.style_preferences && Array.isArray(input.style_preferences)) {
+    query = query.overlaps("style_preferences", input.style_preferences as string[]);
+  }
+  if (input.subject_preferences && Array.isArray(input.subject_preferences)) {
+    query = query.overlaps("subject_preferences", input.subject_preferences as string[]);
+  }
+
+  const { data, error } = await query.order("last_name", { ascending: true }).limit(limit);
+
+  if (error) return { result: { error: error.message }, summary: "Search failed" };
+
+  // If batch_name filter, resolve batch IDs first
+  let results = data || [];
+  if (input.batch_name && typeof input.batch_name === "string") {
+    const { data: batches } = await admin
+      .from("prospect_batches")
+      .select("id")
+      .ilike("name", `%${input.batch_name}%`);
+    const batchIds = new Set((batches || []).map((b) => b.id));
+    results = results.filter((p) => batchIds.has(p.batch_id));
+  }
+
+  // Get batch names for context
+  const batchIds = [...new Set(results.map((p) => p.batch_id))];
+  let batchNames: Record<string, string> = {};
+  if (batchIds.length > 0) {
+    const { data: batches } = await admin
+      .from("prospect_batches")
+      .select("id, name")
+      .in("id", batchIds);
+    if (batches) {
+      for (const b of batches) batchNames[b.id] = b.name;
+    }
+  }
+
+  const formatted = results.map((p) => ({
+    id: p.id,
+    display_name: p.display_name || [p.first_name, p.last_name].filter(Boolean).join(" ") || p.display_name,
+    email: p.email,
+    phone: p.phone,
+    company: p.company,
+    title: p.title,
+    location: p.location,
+    linkedin: p.linkedin,
+    instagram: p.instagram,
+    research_summary: p.research_summary,
+    confidence: p.confidence,
+    style_preferences: p.style_preferences || [],
+    subject_preferences: p.subject_preferences || [],
+    mood_preferences: p.mood_preferences || [],
+    known_artists: p.known_artists || [],
+    engagement_level: p.engagement_level,
+    board_memberships: p.board_memberships || [],
+    collection_mentions: p.collection_mentions || [],
+    batch_name: batchNames[p.batch_id] || null,
+    link: `/tools/prospects/${p.batch_id}`,
+  }));
+
+  return {
+    result: { count: formatted.length, prospects: formatted },
+    summary: `Found ${formatted.length} prospects${hasPreferenceFilter ? " with matching preferences" : ""}`,
+  };
+}
+
+async function executeGetProspect(
+  admin: SupabaseAdmin,
+  input: Record<string, unknown>,
+): Promise<{ result: unknown; summary: string }> {
+  const id = input.id as string;
+
+  const { data: prospect, error } = await admin
+    .from("prospects")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error || !prospect) return { result: { error: "Prospect not found" }, summary: "Not found" };
+
+  // Get batch name
+  const { data: batch } = await admin
+    .from("prospect_batches")
+    .select("name")
+    .eq("id", prospect.batch_id)
+    .single();
+
+  return {
+    result: {
+      ...prospect,
+      batch_name: batch?.name || null,
+      link: `/tools/prospects/${prospect.batch_id}`,
+    },
+    summary: `Fetched prospect: ${prospect.display_name || prospect.input_name}`,
+  };
 }
