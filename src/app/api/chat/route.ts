@@ -277,73 +277,32 @@ export async function POST(request: NextRequest) {
         const accumulatedCards: Record<string, unknown> = {};
 
         while (maxLoops-- > 0) {
-          // Use streaming API — we'll collect tool calls or stream text
-          const stream = await anthropic.messages.create({
+          const response = await anthropic.messages.create({
             model: "claude-sonnet-4-6",
             max_tokens: 4096,
             system: SYSTEM_PROMPT,
             tools: CHAT_TOOLS,
             messages: loopMessages,
-            stream: true,
           });
 
-          // Collect the full response from the stream
-          let streamedText = "";
-          const toolCalls: Array<{ id: string; name: string; inputJson: string }> = [];
-          let activeToolIdx = -1;
-          let hasToolUse = false;
+          // Check for tool use
+          const toolUseBlocks = response.content.filter(
+            (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+          );
+          const textBlocks = response.content.filter(
+            (b): b is Anthropic.TextBlock => b.type === "text",
+          );
 
-          for await (const event of stream) {
-            if (event.type === "content_block_start") {
-              if (event.content_block.type === "tool_use") {
-                hasToolUse = true;
-                toolCalls.push({
-                  id: event.content_block.id,
-                  name: event.content_block.name,
-                  inputJson: "",
-                });
-                activeToolIdx = toolCalls.length - 1;
-              }
-            } else if (event.type === "content_block_delta") {
-              if (event.delta.type === "text_delta") {
-                streamedText += event.delta.text;
-                // Only stream text to client if no tool use detected
-                // (tool-use responses have preamble text we don't want to show)
-                if (!hasToolUse) {
-                  send({ type: "delta", text: event.delta.text });
-                }
-              } else if (event.delta.type === "input_json_delta" && activeToolIdx >= 0) {
-                toolCalls[activeToolIdx].inputJson += event.delta.partial_json;
-              }
-            } else if (event.type === "content_block_stop") {
-              activeToolIdx = -1;
-            }
-          }
-
-          if (toolCalls.length > 0) {
-            // Build response content for conversation history
-            // Use loose type since SDK's ContentBlock requires internal fields (citations, caller)
-            const responseContent: Array<Record<string, unknown>> = [];
-            if (streamedText) {
-              responseContent.push({ type: "text", text: streamedText });
-            }
-
+          if (toolUseBlocks.length > 0) {
+            // Process tool calls
             const toolResults: Anthropic.ToolResultBlockParam[] = [];
 
-            for (const tc of toolCalls) {
-              const parsedInput = JSON.parse(tc.inputJson);
-              responseContent.push({
-                type: "tool_use",
-                id: tc.id,
-                name: tc.name,
-                input: parsedInput,
-              });
-
-              send({ type: "status", text: `Using ${tc.name}...` });
+            for (const toolCall of toolUseBlocks) {
+              send({ type: "status", text: `Using ${toolCall.name}...` });
 
               const { result, summary } = await executeTool(
-                tc.name,
-                parsedInput as Record<string, unknown>,
+                toolCall.name,
+                toolCall.input as Record<string, unknown>,
               );
 
               // Save tool call + result to DB
@@ -351,52 +310,49 @@ export async function POST(request: NextRequest) {
                 conversation_id: convId,
                 role: "tool_call",
                 content: summary,
-                tool_data: { name: tc.name, input: parsedInput, result },
+                tool_data: { name: toolCall.name, input: toolCall.input, result },
               });
 
               toolResults.push({
                 type: "tool_result",
-                tool_use_id: tc.id,
+                tool_use_id: toolCall.id,
                 content: JSON.stringify(result),
               });
 
               // Extract and accumulate displayable card data
-              const cards = extractCards(tc.name, result as Record<string, unknown>);
+              const cards = extractCards(toolCall.name, result as Record<string, unknown>);
               if (cards) {
                 for (const card of cards) {
                   const c = card as Record<string, unknown>;
                   if (c.link) accumulatedCards[c.link as string] = c;
                 }
               }
-              send({ type: "tool_result", tool: tc.name, summary, cards });
+              send({ type: "tool_result", tool: toolCall.name, summary, cards });
             }
 
             // Continue the loop with tool results
             loopMessages = [
               ...loopMessages,
-              { role: "assistant", content: responseContent as unknown as Anthropic.ContentBlockParam[] },
+              { role: "assistant", content: response.content },
               { role: "user", content: toolResults },
             ];
-
-            // Send accumulated cards before next streaming response begins
-            const cardArray = Object.values(accumulatedCards);
-            if (cardArray.length > 0) {
-              send({ type: "cards", cards: cardArray });
-            }
 
             continue;
           }
 
-          // Final text response — text was already streamed via delta events
-          if (streamedText) {
+          // Final text response — send with accumulated card data
+          const finalText = textBlocks.map((b) => b.text).join("\n");
+
+          if (finalText) {
+            // Save assistant message
             await admin.from("chat_messages").insert({
               conversation_id: convId,
               role: "assistant",
-              content: streamedText,
+              content: finalText,
             });
 
             const cardArray = Object.values(accumulatedCards);
-            send({ type: "assistant_end", cards: cardArray.length > 0 ? cardArray : null });
+            send({ type: "assistant", content: finalText, cards: cardArray.length > 0 ? cardArray : null });
           }
 
           // Auto-title: if this is the first exchange (no title yet)

@@ -548,7 +548,6 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
   const [toolStatuses, setToolStatuses] = useState<string[]>([]);
-  const [streamingContent, setStreamingContent] = useState("");
   const pendingCardsRef = useRef<Map<string, ResultCard>>(new Map());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -559,10 +558,10 @@ export default function ChatPage() {
     fetchConversations();
   }, []);
 
-  // Scroll to bottom on new messages or streaming content
+  // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, statusText, streamingContent]);
+  }, [messages, statusText]);
 
   // Focus input when starting a new chat (not when loading saved ones)
   useEffect(() => {
@@ -661,7 +660,6 @@ export default function ChatPage() {
       setStreaming(true);
       setStatusText(null);
       setToolStatuses([]);
-      setStreamingContent("");
       pendingCardsRef.current = new Map();
 
       try {
@@ -711,53 +709,17 @@ export default function ChatPage() {
                   setStatusText(null);
                   break;
 
-                case "cards":
-                  // Bulk card data sent before streaming starts
-                  if (data.cards && Array.isArray(data.cards)) {
-                    for (const card of data.cards) {
-                      if (card.link) pendingCardsRef.current.set(card.link, card);
-                    }
-                  }
-                  break;
-
-                case "delta":
-                  // Streaming text token
-                  setStreamingContent((prev) => prev + data.text);
-                  setStatusText(null);
-                  break;
-
-                case "assistant_end": {
-                  // Streaming complete — finalize message with cards
+                case "assistant": {
+                  // Build cardMap from cards sent with assistant event (primary) + any accumulated from tool_results (fallback)
                   const cardMap = new Map<string, ResultCard>(pendingCardsRef.current);
                   if (data.cards && Array.isArray(data.cards)) {
                     for (const card of data.cards) {
                       if (card.link) cardMap.set(card.link, card);
                     }
                   }
-                  setStreamingContent((prev) => {
-                    const finalContent = prev;
-                    setMessages((msgs) => [
-                      ...msgs,
-                      { role: "assistant", content: finalContent, cardMap: cardMap.size > 0 ? cardMap : undefined },
-                    ]);
-                    return "";
-                  });
-                  pendingCardsRef.current = new Map();
-                  setStatusText(null);
-                  break;
-                }
-
-                case "assistant": {
-                  // Legacy non-streaming response (backward compat)
-                  const cardMap2 = new Map<string, ResultCard>(pendingCardsRef.current);
-                  if (data.cards && Array.isArray(data.cards)) {
-                    for (const card of data.cards) {
-                      if (card.link) cardMap2.set(card.link, card);
-                    }
-                  }
                   setMessages((prev) => [
                     ...prev,
-                    { role: "assistant", content: data.content, cardMap: cardMap2.size > 0 ? cardMap2 : undefined },
+                    { role: "assistant", content: data.content, cardMap: cardMap.size > 0 ? cardMap : undefined },
                   ]);
                   pendingCardsRef.current = new Map();
                   setStatusText(null);
@@ -954,18 +916,8 @@ export default function ChatPage() {
                 );
               })}
 
-              {/* Streaming assistant response */}
-              {streaming && streamingContent && (
-                <div className="flex justify-start">
-                  <div className="max-w-[85%] rounded-2xl bg-gray-100 px-4 py-3 text-sm leading-relaxed text-gray-800">
-                    {renderMarkdown(streamingContent)}
-                    <span className="ml-0.5 inline-block h-4 w-1 animate-pulse bg-gray-400" />
-                  </div>
-                </div>
-              )}
-
               {/* Tool status indicators */}
-              {streaming && toolStatuses.length > 0 && !streamingContent && (
+              {toolStatuses.length > 0 && (
                 <div className="flex justify-start">
                   <div className="text-xs italic text-gray-400">
                     {toolStatuses.map((s, i) => (
@@ -976,7 +928,7 @@ export default function ChatPage() {
               )}
 
               {/* Streaming status */}
-              {streaming && statusText && !streamingContent && (
+              {streaming && statusText && (
                 <div className="flex justify-start">
                   <div className="flex items-center gap-2 text-xs italic text-gray-400">
                     <Spinner className="h-3 w-3" />
@@ -985,8 +937,8 @@ export default function ChatPage() {
                 </div>
               )}
 
-              {/* Thinking indicator — only before any content arrives */}
-              {streaming && !statusText && !streamingContent && toolStatuses.length === 0 && messages[messages.length - 1]?.role === "user" && (
+              {/* Streaming indicator (no specific status) */}
+              {streaming && !statusText && messages[messages.length - 1]?.role === "user" && (
                 <div className="flex justify-start">
                   <div className="flex items-center gap-2 rounded-2xl bg-gray-100 px-4 py-3 text-sm text-gray-400">
                     <Spinner className="h-3.5 w-3.5" />
