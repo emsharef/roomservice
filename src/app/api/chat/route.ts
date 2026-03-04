@@ -20,7 +20,7 @@ You have tools to search and query the gallery database. Use them to answer ques
 
 Be concise and gallery-professional. When presenting search results, summarize the key findings rather than listing every field. Highlight what's most relevant to the question asked.
 
-You can display any result as a visual card (with image, tags, price, etc.) by writing <<card:/inventory/ID>>, <<card:/artists/ID>>, <<card:/contacts/ID>>, or <<card:/tools/prospects/BATCH_ID>> using the record's link path. Use cards to highlight key results visually — for example, top recommendations or specific artworks you're drawing attention to. Use regular markdown links [text](/path) for simple references or long lists. You can mix cards and text freely.`;
+You can display any result as a visual card (with image, tags, price, etc.) by writing <<card:LINK>> where LINK is the exact link path from the search result. For example: <<card:/inventory/12345>>, <<card:/artists/678>>, <<card:/contacts/999>>, or <<card:/tools/prospects/BATCH_ID#p-UUID>>. Always use the exact link field from the result — do not construct links yourself. Use cards to highlight key results visually — for example, top recommendations or specific artworks you're drawing attention to. Use regular markdown links [text](/path) for simple references or long lists. You can mix cards and text freely.`;
 
 // Extract displayable card data from tool results
 function extractCards(toolName: string, result: Record<string, unknown>): unknown[] | null {
@@ -121,6 +121,56 @@ function extractCards(toolName: string, result: Record<string, unknown>): unknow
       engagement: p.engagement_level,
       link: p.link,
     }));
+  }
+
+  if (toolName === "get_prospect") {
+    if (result.error || !result.link) return null;
+    return [{
+      type: "prospect",
+      id: result.id,
+      title: (result as any).display_name || (result as any).input_name,
+      subtitle: [(result as any).title, (result as any).company].filter(Boolean).join(", "),
+      location: (result as any).location,
+      tags: (result as any).style_preferences || [],
+      engagement: (result as any).engagement_level,
+      link: result.link as string,
+    }];
+  }
+
+  if (toolName === "get_record") {
+    if (result.error) return null;
+    const r = result as any;
+    if (r.link?.startsWith("/inventory/")) {
+      return [{
+        type: "artwork",
+        id: r.id,
+        title: r.display_title || r.title || "Untitled",
+        subtitle: [r.medium, r.year].filter(Boolean).join(", "),
+        image: r.primary_image_url,
+        price: r.price,
+        status: r.status,
+        link: r.link,
+      }];
+    }
+    if (r.link?.startsWith("/contacts/")) {
+      return [{
+        type: "contact",
+        id: r.id,
+        title: r.display_name,
+        subtitle: [r.company, r.location].filter(Boolean).join(" · "),
+        email: r.email,
+        link: r.link,
+      }];
+    }
+    if (r.link?.startsWith("/artists/")) {
+      return [{
+        type: "artist",
+        id: r.id,
+        title: r.display_name,
+        subtitle: [r.country, r.life_dates].filter(Boolean).join(" · "),
+        link: r.link,
+      }];
+    }
   }
 
   return null;

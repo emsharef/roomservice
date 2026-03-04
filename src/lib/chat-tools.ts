@@ -970,7 +970,7 @@ async function executeSearchProspects(
     board_memberships: p.board_memberships || [],
     collection_mentions: p.collection_mentions || [],
     batch_name: batchNames[p.batch_id] || null,
-    link: `/tools/prospects/${p.batch_id}`,
+    link: `/tools/prospects/${p.batch_id}#p-${p.id}`,
   }));
 
   return {
@@ -1004,7 +1004,7 @@ async function executeGetProspect(
     result: {
       ...prospect,
       batch_name: batch?.name || null,
-      link: `/tools/prospects/${prospect.batch_id}`,
+      link: `/tools/prospects/${prospect.batch_id}#p-${prospect.id}`,
     },
     summary: `Fetched prospect: ${prospect.display_name || prospect.input_name}`,
   };

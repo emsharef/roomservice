@@ -39,6 +39,113 @@ interface Message {
 }
 
 // ---------------------------------------------------------------------------
+// Client-side card extraction (mirrors server extractCards for loaded convos)
+// ---------------------------------------------------------------------------
+
+function extractCardsClient(toolName: string, result: any): ResultCard[] | null {
+  if (!result) return null;
+
+  if (toolName === "search_artworks" || toolName === "find_similar_artworks") {
+    const artworks = result.artworks || result.similar_artworks;
+    if (!artworks?.length) return null;
+    return artworks.map((a: any) => ({
+      type: "artwork" as const, id: a.id,
+      title: a.display_title || a.title || "Untitled",
+      subtitle: [a.medium, a.year].filter(Boolean).join(", "),
+      image: a.primary_image_url, price: a.price, status: a.status, link: a.link,
+    }));
+  }
+
+  if (toolName === "find_matches") {
+    const matches = result.matches;
+    if (!matches?.length) return null;
+    if (matches[0].primary_image_url || matches[0].medium) {
+      return matches.map((a: any) => ({
+        type: "artwork" as const, id: a.id,
+        title: a.display_title || a.title || "Untitled",
+        subtitle: [a.medium, a.year].filter(Boolean).join(", "),
+        image: a.primary_image_url, price: a.price, status: a.status, link: a.link,
+      }));
+    }
+    return matches.map((c: any) => ({
+      type: "contact" as const, id: c.id, title: c.display_name,
+      subtitle: [c.company, c.location].filter(Boolean).join(" · "),
+      tags: c.matching_tags?.style || c.style_preferences || [], link: c.link,
+    }));
+  }
+
+  if (toolName === "search_contacts") {
+    const contacts = result.contacts;
+    if (!contacts?.length) return null;
+    return contacts.map((c: any) => ({
+      type: "contact" as const, id: c.id, title: c.display_name,
+      subtitle: [c.company, c.location].filter(Boolean).join(" · "),
+      email: c.email, tags: c.style_preferences || [],
+      engagement: c.engagement_level, link: c.link,
+    }));
+  }
+
+  if (toolName === "search_artists") {
+    const artists = result.artists;
+    if (!artists?.length) return null;
+    return artists.map((a: any) => ({
+      type: "artist" as const, id: a.id, title: a.display_name,
+      subtitle: [a.country, a.life_dates].filter(Boolean).join(" · "),
+      workCount: a.work_count, link: a.link,
+    }));
+  }
+
+  if (toolName === "search_prospects") {
+    const prospects = result.prospects;
+    if (!prospects?.length) return null;
+    return prospects.map((p: any) => ({
+      type: "prospect" as const, id: p.id, title: p.display_name,
+      subtitle: [p.title, p.company].filter(Boolean).join(", "),
+      location: p.location, tags: p.style_preferences || [],
+      engagement: p.engagement_level, link: p.link,
+    }));
+  }
+
+  if (toolName === "get_prospect") {
+    if (result.error || !result.link) return null;
+    return [{
+      type: "prospect" as const, id: result.id, title: result.display_name || result.input_name,
+      subtitle: [result.title, result.company].filter(Boolean).join(", "),
+      location: result.location, tags: result.style_preferences || [],
+      engagement: result.engagement_level, link: result.link,
+    }];
+  }
+
+  if (toolName === "get_record") {
+    if (result.error || !result.link) return null;
+    if (result.link?.startsWith("/inventory/")) {
+      return [{
+        type: "artwork" as const, id: result.id,
+        title: result.display_title || result.title || "Untitled",
+        subtitle: [result.medium, result.year].filter(Boolean).join(", "),
+        image: result.primary_image_url, price: result.price, status: result.status, link: result.link,
+      }];
+    }
+    if (result.link?.startsWith("/contacts/")) {
+      return [{
+        type: "contact" as const, id: result.id, title: result.display_name,
+        subtitle: [result.company, result.location].filter(Boolean).join(" · "),
+        email: result.email, link: result.link,
+      }];
+    }
+    if (result.link?.startsWith("/artists/")) {
+      return [{
+        type: "artist" as const, id: result.id, title: result.display_name,
+        subtitle: [result.country, result.life_dates].filter(Boolean).join(" · "),
+        link: result.link,
+      }];
+    }
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Example queries
 // ---------------------------------------------------------------------------
 
@@ -54,6 +161,8 @@ const EXAMPLES = [
 // ---------------------------------------------------------------------------
 
 function renderMarkdown(text: string) {
+  // Safety net: strip any remaining <<card:...>> markers
+  text = text.replace(/<<card:\/[^>]+>>/g, "");
   // Split into lines for list handling
   const lines = text.split("\n");
   const elements: React.ReactNode[] = [];
@@ -305,19 +414,22 @@ function AssistantMessage({ content, cardMap }: { content: string; cardMap?: Map
       segments.push({ type: "text", value: textBefore });
     }
 
-    // Look up card by link path
+    // Look up card by link path — try exact match, then strip fragment, then fuzzy
     const path = match[1];
-    const card = cardMap.get(path);
-    if (card) {
-      pendingCards.push(card);
-    } else {
-      // Try partial match (prospect links use batch path)
+    let card = cardMap.get(path);
+    if (!card) {
+      // Try stripping fragment from path or key
+      const pathBase = path.split("#")[0];
       for (const [key, c] of cardMap) {
-        if (key.startsWith(path) || path.startsWith(key)) {
-          pendingCards.push(c);
+        const keyBase = key.split("#")[0];
+        if (key === path || keyBase === pathBase || key.startsWith(path) || path.startsWith(key)) {
+          card = c;
           break;
         }
       }
+    }
+    if (card) {
+      pendingCards.push(card);
     }
 
     lastIndex = match.index + match[0].length;
@@ -425,10 +537,39 @@ export default function ChatPage() {
       const res = await fetch(`/api/chat/${convId}`);
       if (res.ok) {
         const data = await res.json();
-        // Only show user + assistant messages, filter out tool_call/tool_result
-        const visible = (data.messages || []).filter(
-          (m: Message) => m.role === "user" || m.role === "assistant",
-        );
+        const allMessages = data.messages || [];
+
+        // Build card maps from tool_call messages for each subsequent assistant message
+        const cardMaps: Map<string, ResultCard>[] = [];
+        let currentCards = new Map<string, ResultCard>();
+
+        for (const m of allMessages) {
+          if (m.role === "tool_call" && m.tool_data) {
+            const td = m.tool_data;
+            const cards = extractCardsClient(td.name, td.result);
+            if (cards) {
+              for (const card of cards) {
+                if (card.link) currentCards.set(card.link, card);
+              }
+            }
+          } else if (m.role === "assistant") {
+            cardMaps.push(currentCards.size > 0 ? new Map(currentCards) : new Map());
+            currentCards = new Map();
+          }
+        }
+
+        // Only show user + assistant messages with reconstructed cardMaps
+        let assistantIdx = 0;
+        const visible: Message[] = [];
+        for (const m of allMessages) {
+          if (m.role === "user") {
+            visible.push(m);
+          } else if (m.role === "assistant") {
+            const cm = cardMaps[assistantIdx];
+            visible.push({ ...m, cardMap: cm && cm.size > 0 ? cm : undefined });
+            assistantIdx++;
+          }
+        }
         setMessages(visible);
       }
     } catch {
