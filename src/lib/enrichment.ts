@@ -603,6 +603,148 @@ export async function enrichProspect(
   return enrichment;
 }
 
+/**
+ * Lightweight gap-filler: only runs contact scraping and photo finding
+ * for a prospect that's already been enriched. Skips the expensive main
+ * Claude enrichment call entirely.
+ *
+ * Returns { updated: true/false, fields: { ... } } with only the fields that changed.
+ */
+export async function fillProspectGaps(
+  prospectId: string,
+): Promise<{ updated: boolean; fields: Record<string, string | null> }> {
+  const admin = createAdminClient();
+
+  const { data: prospect, error } = await admin
+    .from("prospects")
+    .select("id, input_name, display_name, email, phone, website, instagram, photo_url, company, title, status")
+    .eq("id", prospectId)
+    .single();
+
+  if (error || !prospect) {
+    throw new Error(`Prospect ${prospectId} not found: ${error?.message}`);
+  }
+
+  const name = prospect.display_name || prospect.input_name;
+  const missing: string[] = [];
+  if (!prospect.email) missing.push("email");
+  if (!prospect.photo_url) missing.push("photo_url");
+  if (!prospect.phone) missing.push("phone");
+  if (!prospect.instagram) missing.push("instagram");
+
+  if (missing.length === 0) {
+    return { updated: false, fields: {} };
+  }
+
+  // Build a targeted Haiku web search prompt
+  const context = [prospect.title, prospect.company].filter(Boolean).join(" at ");
+  const searchInstructions = missing.map((field) => {
+    switch (field) {
+      case "email":
+        return `- **email**: Search for their professional or personal email address. Check their personal website, institutional staff pages, speaker bios, LinkedIn, conference programs. Search for "${name} email" and "${name} contact".`;
+      case "photo_url":
+        return `- **photo_url**: Find a direct URL to a headshot or profile photo. The URL must point to an actual image file that loads in an <img> tag. Look on institutional staff pages, speaker bios, LinkedIn, press coverage. NOT a search results page.`;
+      case "phone":
+        return `- **phone**: Search for a public phone number (office or direct line). Check their institutional contact page or personal website.`;
+      case "instagram":
+        return `- **instagram**: Find their Instagram handle if they have one.`;
+      default:
+        return "";
+    }
+  }).join("\n");
+
+  const prompt = `Find the following missing information for **${name}**${context ? ` (${context})` : ""}.
+This person works in the art world (museum, gallery, or cultural institution).
+${prospect.website ? `Their website: ${prospect.website}` : ""}
+
+Search for EACH of these:
+${searchInstructions}
+
+Return ONLY valid JSON (no markdown, no explanation) with these exact keys:
+${missing.map((f) => `"${f}"`).join(", ")}
+
+Rules:
+- For email: must be a real email address, not a generic contact form. null if not found.
+- For photo_url: must be a direct image URL (ending in .jpg, .png, .webp, or from a CDN that serves images). Verify it looks like an actual headshot. null if not found.
+- For phone: include area code. null if not found.
+- For instagram: just the handle without @. null if not found.
+- If you cannot find a field with confidence, set it to null.`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 1024,
+      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    // Extract text from response
+    let text = "";
+    for (const block of response.content) {
+      if (block.type === "text") text += block.text;
+    }
+
+    // Parse JSON from response (handle markdown wrapping)
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return { updated: false, fields: {} };
+    }
+
+    const result = JSON.parse(jsonMatch[0]);
+    const updates: Record<string, string | null> = {};
+
+    if (result.email && !prospect.email && typeof result.email === "string" && result.email.includes("@")) {
+      updates.email = result.email;
+    }
+    if (result.photo_url && !prospect.photo_url && typeof result.photo_url === "string" && result.photo_url.startsWith("http")) {
+      // Verify the photo URL actually works
+      try {
+        const photoRes = await fetch(result.photo_url, {
+          method: "GET",
+          signal: AbortSignal.timeout(8_000),
+          redirect: "follow",
+          headers: { "User-Agent": "Mozilla/5.0" },
+        });
+        const ct = photoRes.headers.get("content-type") || "";
+        if (photoRes.ok && ct.includes("image")) {
+          updates.photo_url = result.photo_url;
+        }
+      } catch {
+        // Photo URL didn't work — skip
+      }
+    }
+    if (result.phone && !prospect.phone && typeof result.phone === "string") {
+      updates.phone = result.phone;
+    }
+    if (result.instagram && !prospect.instagram && typeof result.instagram === "string") {
+      updates.instagram = result.instagram.replace(/^@/, "");
+    }
+
+    // Also try scraping their website for contact info if we still need email
+    if (!updates.email && !prospect.email && prospect.website) {
+      const scraped = await scrapeContactInfo(prospect.website);
+      if (scraped.email) updates.email = scraped.email;
+      if (scraped.phone && !prospect.phone && !updates.phone) updates.phone = scraped.phone;
+      if (scraped.instagram && !prospect.instagram && !updates.instagram) updates.instagram = scraped.instagram;
+    }
+
+    // Write updates if any
+    if (Object.keys(updates).length > 0) {
+      await admin
+        .from("prospects")
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq("id", prospectId);
+
+      return { updated: true, fields: updates };
+    }
+
+    return { updated: false, fields: {} };
+  } catch (e) {
+    console.error(`fillProspectGaps error for ${name}:`, e);
+    return { updated: false, fields: {} };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Contact info scraper — fetch a website and extract email/phone/socials
 // ---------------------------------------------------------------------------
