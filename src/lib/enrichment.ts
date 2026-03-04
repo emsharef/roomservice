@@ -655,24 +655,27 @@ export async function fillProspectGaps(
     return { updated: false, fields: {} };
   }
 
-  // Build a targeted Haiku web search prompt
   const context = [prospect.title, prospect.company].filter(Boolean).join(" at ");
-  const searchInstructions = missing.map((field) => {
-    switch (field) {
-      case "email":
-        return `- **email**: Search for their professional or personal email address. Check their personal website, institutional staff pages, speaker bios, LinkedIn, conference programs. Search for "${name} email" and "${name} contact".`;
-      case "photo_url":
-        return `- **photo_url**: Find a direct URL to a headshot or profile photo. The URL must point to an actual image file that loads in an <img> tag. Look on institutional staff pages, speaker bios, LinkedIn, press coverage. NOT a search results page.`;
-      case "phone":
-        return `- **phone**: Search for a public phone number (office or direct line). Check their institutional contact page or personal website.`;
-      case "instagram":
-        return `- **instagram**: Find their Instagram handle if they have one.`;
-      default:
-        return "";
-    }
-  }).join("\n");
+  const updates: Record<string, string | null> = {};
 
-  const prompt = `Find the following missing information for **${name}**${context ? ` (${context})` : ""}.
+  try {
+    // 1. Use Haiku web search for contact info (email, phone, instagram)
+    const contactMissing = missing.filter((f) => f !== "photo_url");
+    if (contactMissing.length > 0) {
+      const searchInstructions = contactMissing.map((field) => {
+        switch (field) {
+          case "email":
+            return `- **email**: Search for their professional or personal email address. Check their personal website, institutional staff pages, speaker bios, LinkedIn, conference programs. Search for "${name} email" and "${name} contact".`;
+          case "phone":
+            return `- **phone**: Search for a public phone number (office or direct line). Check their institutional contact page or personal website.`;
+          case "instagram":
+            return `- **instagram**: Find their Instagram handle if they have one.`;
+          default:
+            return "";
+        }
+      }).join("\n");
+
+      const prompt = `Find the following missing information for **${name}**${context ? ` (${context})` : ""}.
 This person works in the art world (museum, gallery, or cultural institution).
 ${prospect.website ? `Their website: ${prospect.website}` : ""}
 
@@ -680,71 +683,53 @@ Search for EACH of these:
 ${searchInstructions}
 
 Return ONLY valid JSON (no markdown, no explanation) with these exact keys:
-${missing.map((f) => `"${f}"`).join(", ")}
+${contactMissing.map((f) => `"${f}"`).join(", ")}
 
 Rules:
 - For email: must be a real email address, not a generic contact form. null if not found.
-- For photo_url: must be a direct image URL (ending in .jpg, .png, .webp, or from a CDN that serves images). Verify it looks like an actual headshot. null if not found.
 - For phone: include area code. null if not found.
 - For instagram: just the handle without @. null if not found.
 - If you cannot find a field with confidence, set it to null.`;
 
-  try {
-    const response = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 1024,
-      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
-      messages: [{ role: "user", content: prompt }],
-    });
+      const response = await anthropic.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
+        messages: [{ role: "user", content: prompt }],
+      });
 
-    // Extract text from response
-    let text = "";
-    for (const block of response.content) {
-      if (block.type === "text") text += block.text;
-    }
+      let text = "";
+      for (const block of response.content) {
+        if (block.type === "text") text += block.text;
+      }
 
-    // Parse JSON from response (handle markdown wrapping)
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return { updated: false, fields: {} };
-    }
-
-    const result = JSON.parse(jsonMatch[0]);
-    const updates: Record<string, string | null> = {};
-
-    if (result.email && !prospect.email && typeof result.email === "string" && result.email.includes("@")) {
-      updates.email = result.email;
-    }
-    if (result.photo_url && photoMissing && typeof result.photo_url === "string" && result.photo_url.startsWith("http")) {
-      // Verify the photo URL actually works
-      try {
-        const photoRes = await fetch(result.photo_url, {
-          method: "GET",
-          signal: AbortSignal.timeout(8_000),
-          redirect: "follow",
-          headers: { "User-Agent": "Mozilla/5.0" },
-        });
-        const ct = photoRes.headers.get("content-type") || "";
-        if (photoRes.ok && ct.includes("image")) {
-          updates.photo_url = result.photo_url;
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        if (result.email && !prospect.email && typeof result.email === "string" && result.email.includes("@")) {
+          updates.email = result.email;
         }
-      } catch {
-        // Photo URL didn't work — skip
+        if (result.phone && !prospect.phone && typeof result.phone === "string") {
+          updates.phone = result.phone;
+        }
+        if (result.instagram && !prospect.instagram && typeof result.instagram === "string") {
+          updates.instagram = result.instagram.replace(/^@/, "");
+        }
+      }
+
+      // Also try scraping their website for contact info if we still need email
+      if (!updates.email && !prospect.email && prospect.website) {
+        const scraped = await scrapeContactInfo(prospect.website);
+        if (scraped.email) updates.email = scraped.email;
+        if (scraped.phone && !prospect.phone && !updates.phone) updates.phone = scraped.phone;
+        if (scraped.instagram && !prospect.instagram && !updates.instagram) updates.instagram = scraped.instagram;
       }
     }
-    if (result.phone && !prospect.phone && typeof result.phone === "string") {
-      updates.phone = result.phone;
-    }
-    if (result.instagram && !prospect.instagram && typeof result.instagram === "string") {
-      updates.instagram = result.instagram.replace(/^@/, "");
-    }
 
-    // Also try scraping their website for contact info if we still need email
-    if (!updates.email && !prospect.email && prospect.website) {
-      const scraped = await scrapeContactInfo(prospect.website);
-      if (scraped.email) updates.email = scraped.email;
-      if (scraped.phone && !prospect.phone && !updates.phone) updates.phone = scraped.phone;
-      if (scraped.instagram && !prospect.instagram && !updates.instagram) updates.instagram = scraped.instagram;
+    // 2. Use two-step photo finder for missing/broken photos (Haiku for cost savings)
+    if (photoMissing) {
+      const photo = await findPersonPhoto(name, context, "claude-haiku-4-5-20251001");
+      if (photo) updates.photo_url = photo;
     }
 
     // Write updates if any
@@ -845,11 +830,11 @@ function looksLikeImageUrl(url: string): boolean {
  * 2. Try each page: fetch the HTML and use Claude to extract the actual <img src> URL
  * 3. Verify the URL returns image content
  */
-async function findPersonPhoto(name: string, context: string): Promise<string | null> {
+async function findPersonPhoto(name: string, context: string, model: string = "claude-sonnet-4-6"): Promise<string | null> {
   try {
     // Step 1: Find candidate pages with their photo
     const searchResponse = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
+      model,
       max_tokens: 1024,
       tools: [{ type: "web_search_20250305" as any, name: "web_search", max_uses: 5 }],
       messages: [{
@@ -891,7 +876,7 @@ Return {"pages": []} if no suitable pages found.`,
         const truncated = html.length > 50_000 ? html.substring(0, 50_000) : html;
 
         const extractResponse = await anthropic.messages.create({
-          model: "claude-sonnet-4-6",
+          model,
           max_tokens: 512,
           messages: [{
             role: "user",
