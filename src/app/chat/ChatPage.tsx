@@ -269,11 +269,6 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, userMessage]);
       setInput("");
       inputRef.current?.blur();
-      // Reset scroll after iOS keyboard dismisses
-      setTimeout(() => {
-        window.scrollTo(0, 0);
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, 100);
       setStreaming(true);
       setStatusText(null);
       setToolStatuses([]);
@@ -380,7 +375,7 @@ export default function ChatPage() {
   // ------ Render ------
 
   return (
-    <div className="flex h-[calc(100dvh-64px)] overflow-hidden">
+    <div className="fixed inset-0 top-16 flex overflow-hidden">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
