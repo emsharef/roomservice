@@ -269,6 +269,11 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, userMessage]);
       setInput("");
       inputRef.current?.blur();
+      // Reset scroll after iOS keyboard dismisses
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
       setStreaming(true);
       setStatusText(null);
       setToolStatuses([]);
