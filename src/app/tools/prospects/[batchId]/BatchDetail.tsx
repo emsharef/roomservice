@@ -429,6 +429,7 @@ export default function BatchDetail({
 
   // Research loop state
   const [running, setRunning] = useState(false);
+  const [runMode, setRunMode] = useState<"research" | "fill-gaps">("research");
   const [paused, setPaused] = useState(false);
   const pauseRef = useRef(false);
   const [currentProspect, setCurrentProspect] = useState<string | null>(null);
@@ -440,6 +441,7 @@ export default function BatchDetail({
     done: prospects.filter((p) => p.status === "done").length,
     error: prospects.filter((p) => p.status === "error").length,
     parsed: prospects.filter((p) => p.status === "parsed").length,
+    gaps: prospects.filter((p) => p.status === "done" && (!p.photo_url || !p.email)).length,
   };
 
   // Filtered prospects
@@ -456,6 +458,7 @@ export default function BatchDetail({
       if (targets.length === 0) return;
 
       setRunning(true);
+      setRunMode("research");
       setPaused(false);
       pauseRef.current = false;
       setProgress({ done: 0, total: targets.length });
@@ -596,6 +599,76 @@ export default function BatchDetail({
     setPaused(false);
   }
 
+  // ------ Fill gaps loop ------
+
+  const runFillGaps = useCallback(async () => {
+    const targets = prospects.filter(
+      (p) => p.status === "done" && (!p.photo_url || !p.email),
+    );
+    if (targets.length === 0) return;
+
+    setRunning(true);
+    setRunMode("fill-gaps");
+    setPaused(false);
+    pauseRef.current = false;
+    setProgress({ done: 0, total: targets.length });
+
+    for (let i = 0; i < targets.length; i++) {
+      while (pauseRef.current) {
+        await delay(300);
+      }
+
+      const prospect = targets[i];
+      setCurrentProspect(displayName(prospect));
+
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 65_000);
+
+        const res = await fetch(`/api/prospects/fill-gaps/${prospect.id}`, {
+          method: "POST",
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        if (data.updated && data.fields) {
+          // Merge only the filled fields into local state
+          setProspects((prev) =>
+            prev.map((p) => {
+              if (p.id !== prospect.id) return p;
+              const updates: Partial<Prospect> = {};
+              if (data.fields.photo_url) updates.photo_url = data.fields.photo_url;
+              if (data.fields.email) updates.email = data.fields.email;
+              if (data.fields.phone) updates.phone = data.fields.phone;
+              if (data.fields.instagram) updates.instagram = data.fields.instagram;
+              return { ...p, ...updates };
+            }),
+          );
+        }
+      } catch (e) {
+        // Fill-gaps errors are non-critical — just skip to the next
+        console.warn(`Fill gaps failed for ${displayName(prospect)}:`, e);
+      }
+
+      setProgress({ done: i + 1, total: targets.length });
+
+      if (i < targets.length - 1) {
+        await delay(1000);
+      }
+    }
+
+    setRunning(false);
+    setCurrentProspect(null);
+    router.refresh();
+  }, [prospects, router]);
+
   // ------ Render ------
 
   const hasParsed = counts.parsed > 0;
@@ -668,6 +741,16 @@ export default function BatchDetail({
                 Retry Failed
               </button>
             )}
+
+            {/* Fill Gaps */}
+            {!running && counts.gaps > 0 && (
+              <button
+                onClick={runFillGaps}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+              >
+                Fill Gaps ({counts.gaps})
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -677,7 +760,7 @@ export default function BatchDetail({
         <div className="sticky top-0 z-10 mb-4 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm">
           <div className="mb-2 flex items-center justify-between text-sm">
             <span className="font-medium text-gray-700">
-              Researching {progress.done} / {progress.total}...
+              {runMode === "fill-gaps" ? "Filling gaps" : "Researching"} {progress.done} / {progress.total}...
               {currentProspect && (
                 <span className="ml-2 font-normal text-gray-500">{currentProspect}</span>
               )}
