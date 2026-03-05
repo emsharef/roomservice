@@ -47,7 +47,7 @@ export default async function SyncPage() {
     .from("sync_log")
     .select("*")
     .order("started_at", { ascending: false })
-    .limit(10);
+    .limit(50);
 
   // Fetch last scheduled sync (triggered_by is null = scheduled/background)
   const { data: lastScheduledSync } = await admin
