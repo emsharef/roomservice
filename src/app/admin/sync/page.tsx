@@ -33,7 +33,7 @@ export default async function SyncPage() {
     const { data } = await admin
       .from("sync_log")
       .select("*")
-      .in("entity_type", [entity, "all"])
+      .eq("entity_type", entity)
       .eq("status", "completed")
       .order("completed_at", { ascending: false })
       .limit(1)
@@ -54,7 +54,6 @@ export default async function SyncPage() {
     .from("sync_log")
     .select("*")
     .is("triggered_by", null)
-    .eq("entity_type", "all")
     .order("started_at", { ascending: false })
     .limit(1)
     .single();
