@@ -334,19 +334,30 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
       query = query.is("enrichment_brief", null);
     }
 
-    const { data: artists } = await query.order("artist_id").limit(10000);
+    const { data: rawArtists } = await query.limit(10000);
 
-    if (!artists || artists.length === 0) return;
+    if (!rawArtists || rawArtists.length === 0) return;
 
-    // Fetch display names for progress display
-    const artistIds = artists.map((a) => a.artist_id);
-    const { data: artistNames } = await supabase
+    // Fetch display names and work counts, sort by work_count descending
+    const artistIds = rawArtists.map((a) => a.artist_id);
+    const { data: artistInfo } = await supabase
       .from("artists")
-      .select("id, display_name")
+      .select("id, display_name, work_count")
       .in("id", artistIds);
 
+    const infoMap = new Map(
+      (artistInfo ?? []).map((a) => [a.id, a]),
+    );
+
+    // Sort by work_count descending (most works first)
+    const artists = rawArtists.sort((a, b) => {
+      const countA = infoMap.get(a.artist_id)?.work_count ?? 0;
+      const countB = infoMap.get(b.artist_id)?.work_count ?? 0;
+      return countB - countA;
+    });
+
     const nameMap = new Map(
-      (artistNames ?? []).map((a) => [a.id, a.display_name]),
+      (artistInfo ?? []).map((a) => [a.id, a.display_name]),
     );
 
     setProgress({
