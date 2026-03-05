@@ -390,12 +390,13 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
         });
 
         if (!res.ok) {
-          const data = await res.json().catch(() => ({ error: "Unknown error" }));
+          const data = await res.json().catch(() => null);
+          const errorMsg = data?.error || `HTTP ${res.status}${res.status === 504 ? " (timeout)" : ""}`;
           setProgress((prev) => ({
             ...prev,
             errors: [
               ...prev.errors,
-              { artworkId: artistId, title: name, error: data.error || `HTTP ${res.status}` },
+              { artworkId: artistId, title: name, error: errorMsg },
             ],
           }));
         }
