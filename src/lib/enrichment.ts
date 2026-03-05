@@ -3,6 +3,35 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 const anthropic = new Anthropic();
 
+/** Try to parse JSON, repairing common LLM output issues if the first parse fails. */
+function parseJsonSafe<T>(jsonStr: string): T {
+  try {
+    return JSON.parse(jsonStr);
+  } catch {
+    // Attempt repairs for common LLM JSON errors
+    let repaired = jsonStr;
+    // Remove trailing commas before } or ]
+    repaired = repaired.replace(/,\s*([}\]])/g, "$1");
+    // Fix unescaped newlines inside strings (replace literal newlines between quotes)
+    repaired = repaired.replace(/(?<=:\s*"[^"]*)\n(?=[^"]*")/g, "\\n");
+    try {
+      return JSON.parse(repaired);
+    } catch {
+      // More aggressive: try to fix unescaped quotes inside string values
+      // Match ": "..." patterns and escape internal quotes
+      repaired = jsonStr.replace(/,\s*([}\]])/g, "$1");
+      repaired = repaired.replace(
+        /("(?:summary|formatted_bio|philosophy|process|evolution|market_trajectory|notes|relevance|title)":\s*")([\s\S]+?)("(?:\s*[,}]))/g,
+        (_match, prefix, content, suffix) => {
+          const escaped = content.replace(/(?<!\\)"/g, '\\"');
+          return prefix + escaped + suffix;
+        },
+      );
+      return JSON.parse(repaired);
+    }
+  }
+}
+
 const GALLERY_NAME = "Make Room Los Angeles";
 
 // Canonical tag vocabularies — must match vision.ts artwork analysis tags
@@ -272,7 +301,7 @@ export async function enrichContact(
   }
   const jsonStr = jsonMatch[0];
 
-  const enrichment: CollectorEnrichment = JSON.parse(jsonStr);
+  const enrichment: CollectorEnrichment = parseJsonSafe(jsonStr);
 
   // Validate/filter tags to canonical vocabularies
   const styleTags = new Set(STYLE_TAGS);
@@ -529,7 +558,7 @@ export async function enrichProspect(
   }
   const jsonStr = jsonMatch[0];
 
-  const enrichment: ProspectEnrichment = JSON.parse(jsonStr);
+  const enrichment: ProspectEnrichment = parseJsonSafe(jsonStr);
 
   // Strip orphaned citations (where [N] exceeds sources array length)
   const sourceCount = enrichment.sources?.length ?? 0;
@@ -1205,7 +1234,7 @@ export async function enrichArtist(
   }
   const jsonStr = jsonMatch[0];
 
-  const enrichment: ArtistEnrichment = JSON.parse(jsonStr);
+  const enrichment: ArtistEnrichment = parseJsonSafe(jsonStr);
 
   // Strip orphaned citations (where [N] exceeds sources array length)
   const sourceCount = enrichment.sources?.length ?? 0;
