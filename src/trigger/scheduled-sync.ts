@@ -74,8 +74,14 @@ export const scheduledSync = schedules.task({
         artistsResult.updated +
         contactsResult.updated;
 
-      // Log sync completion
+      // Log sync completion with per-entity breakdown
       if (logEntry) {
+        const breakdown = [
+          artworksResult.processed > 0 ? `artworks: ${artworksResult.processed} (${artworksResult.created} new, ${artworksResult.updated} updated)` : null,
+          artistsResult.processed > 0 ? `artists: ${artistsResult.processed} (${artistsResult.created} new, ${artistsResult.updated} updated)` : null,
+          contactsResult.processed > 0 ? `contacts: ${contactsResult.processed} (${contactsResult.created} new, ${contactsResult.updated} updated)` : null,
+        ].filter(Boolean).join("; ");
+
         await admin
           .from("sync_log")
           .update({
@@ -83,6 +89,7 @@ export const scheduledSync = schedules.task({
             records_processed: totalProcessed,
             records_created: totalCreated,
             records_updated: totalUpdated,
+            error: breakdown || null, // reuse error field for breakdown details on success
             completed_at: new Date().toISOString(),
           })
           .eq("id", logEntry.id);

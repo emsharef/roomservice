@@ -319,11 +319,16 @@ export default function SyncDashboard({
                 : "Not yet run"}
             </p>
             {lastScheduledSync && (
-              <p className="mt-0.5 text-xs text-gray-500">
-                Status: {lastScheduledSync.status}
-                {lastScheduledSync.records_processed > 0 &&
-                  ` — ${lastScheduledSync.records_processed} processed`}
-              </p>
+              <div className="mt-0.5 text-xs text-gray-500">
+                <p>
+                  Status: {lastScheduledSync.status}
+                  {lastScheduledSync.records_processed > 0 &&
+                    ` — ${lastScheduledSync.records_processed} processed`}
+                </p>
+                {lastScheduledSync.status === "completed" && lastScheduledSync.error && (
+                  <p className="text-gray-400">{lastScheduledSync.error}</p>
+                )}
+              </div>
             )}
           </div>
           <div className="flex items-end gap-2">
@@ -536,10 +541,15 @@ export default function SyncDashboard({
                   <td className="whitespace-nowrap px-4 py-3 text-sm">
                     <StatusBadge status={log.status} />
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
-                    {log.records_processed} processed
-                    {log.records_created > 0 && `, ${log.records_created} created`}
-                    {log.records_updated > 0 && `, ${log.records_updated} updated`}
+                  <td className="px-4 py-3 text-sm text-gray-500">
+                    <span className="whitespace-nowrap">
+                      {log.records_processed} processed
+                      {log.records_created > 0 && `, ${log.records_created} created`}
+                      {log.records_updated > 0 && `, ${log.records_updated} updated`}
+                    </span>
+                    {log.status === "completed" && log.error && (
+                      <p className="text-xs text-gray-400">{log.error}</p>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
                     {formatDuration(log.started_at, log.completed_at)}
