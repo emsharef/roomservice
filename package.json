@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@supabase/ssr": "^0.6",
     "@supabase/supabase-js": "^2",
     "@trigger.dev/sdk": "^4.4.1",
