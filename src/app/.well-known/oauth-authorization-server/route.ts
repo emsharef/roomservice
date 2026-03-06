@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 
-const baseUrl =
-  process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3002";
+export const dynamic = "force-dynamic";
+
+function getBaseUrl() {
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3002";
+}
 
 export async function GET() {
+  const baseUrl = getBaseUrl();
   return NextResponse.json({
     issuer: baseUrl,
     authorization_endpoint: `${baseUrl}/oauth/authorize`,
