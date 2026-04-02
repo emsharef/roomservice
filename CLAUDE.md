@@ -98,21 +98,21 @@ scripts/
 
 ### Mirror Tables (synced from Arternal)
 
-**artworks** — id (PK, from Arternal), catalog_number, title (nullable), year, medium, dimensions, edition, price, price_currency, work_status, status, type, height, width, depth, primary_image_url, url, artist_ids[], images (jsonb, from detail endpoint), arternal_created_at, arternal_updated_at, synced_at, detail_synced_at
+**artworks** — id (text PK, 8-char alphanumeric from Arternal), catalog_number, title (nullable), year, medium, dimensions, edition, price, price_currency, work_status, status, type, height, width, depth, primary_image_url, url, artist_ids (text[]), images (jsonb, from detail endpoint), arternal_created_at, arternal_updated_at, synced_at, detail_synced_at
 
-**artists** — id (PK), first_name, last_name, alias, display_name, birth_year, death_year, bio, country, life_dates, work_count, catalog_count, saved, statistics (jsonb, from detail endpoint), arternal_created_at, arternal_updated_at, synced_at, detail_synced_at
+**artists** — id (text PK, 8-char alphanumeric from Arternal), first_name, last_name, alias, display_name, birth_year, death_year, bio, country, life_dates, work_count, catalog_count, saved, statistics (jsonb, from detail endpoint), arternal_created_at, arternal_updated_at, synced_at, detail_synced_at
 
-**contacts** — id (PK), first_name, last_name, display_name, email, phone, phone_mobile, type, website, company, primary_street, primary_city, primary_state, primary_zip, primary_country, primary_address_formatted, tags (text[]), notes (text[]), recent_transactions (jsonb), recent_activities (jsonb), arternal_created_at, arternal_updated_at, synced_at, detail_synced_at
+**contacts** — id (text PK, 8-char alphanumeric from Arternal), first_name, last_name, display_name, email, phone, phone_mobile, type, website, company, primary_street, primary_city, primary_state, primary_zip, primary_country, primary_address_formatted, tags (text[]), notes (text[]), recent_transactions (jsonb), recent_activities (jsonb), arternal_created_at, arternal_updated_at, synced_at, detail_synced_at
 
-**artwork_artists** — artwork_id, artist_id, display_name (junction table)
+**artwork_artists** — artwork_id (text), artist_id (text), display_name (junction table)
 
 ### Extended Tables (AI enrichment, app-owned)
 
-**artworks_extended** — artwork_id (FK), clip_embedding vector(1024), ai_description, style_tags[], color_palette, subject_tags[], mood_tags[], description_embedding vector(1024), comparable_sales, price_history, clip_generated_at, vision_analyzed_at, enrichment_status, enrichment_error
+**artworks_extended** — artwork_id (text FK), clip_embedding vector(1024), ai_description, style_tags[], color_palette, subject_tags[], mood_tags[], description_embedding vector(1024), comparable_sales, price_history, clip_generated_at, vision_analyzed_at, enrichment_status, enrichment_error
 
-**artists_extended** — artist_id (FK), enrichment_brief, formatted_bio, market_context, related_artist_ids[], enrichment_status, enrichment_error, reviewed_by, reviewed_at, written_back_at
+**artists_extended** — artist_id (text FK), enrichment_brief, formatted_bio, market_context, related_artist_ids (text[]), enrichment_status, enrichment_error, reviewed_by, reviewed_at, written_back_at
 
-**contacts_extended** — contact_id (FK), taste_embedding vector(1024), collector_brief, inferred_preferences, enrichment_status, enrichment_error, reviewed_by, reviewed_at, written_back_at
+**contacts_extended** — contact_id (text FK), taste_embedding vector(1024), collector_brief, inferred_preferences, enrichment_status, enrichment_error, reviewed_by, reviewed_at, written_back_at
 
 ### System Tables
 
@@ -248,7 +248,7 @@ ANTHROPIC_API_KEY         # Claude Vision & enrichment
 
 - **"Detailing"** = fetching individual record details from Arternal API. NOT "enrichment".
 - **"Enrichment"** = AI-generated data (Claude Vision analysis, CLIP embeddings, etc.). Stored in `_extended` tables.
-- Mirror tables use Arternal IDs as primary keys. Upsert on `id` ensures idempotency.
+- Mirror tables use Arternal IDs as primary keys (text, 8-char alphanumeric strings like `"vjgY51tx"`). Upsert on `id` ensures idempotency. All entity IDs (artists, artworks, contacts) are **text, not numeric** — never use `parseInt`, `Number()`, or type as `number` for entity IDs.
 - `synced_at` = when the record was last upserted from bulk list endpoint
 - `detail_synced_at` = when individual detail was last successfully fetched. Null = needs (re)fetch.
 - SSE streaming used for long-running sync to prevent serverless timeout (maxDuration = 300s)

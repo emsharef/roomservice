@@ -1,6 +1,6 @@
 # Contact Lists Filter — Design (ON HOLD)
 
-**Status:** On hold — blocked by Arternal ID format migration (bigint -> text)
+**Status:** On hold — ID migration completed 2026-04-02, ready to resume
 **Date:** 2026-03-27
 
 ## Context
@@ -80,6 +80,4 @@ These routes double as future MCP tools for the chat system.
 
 ## Blocker: ID Format Migration
 
-Arternal confirmed they changed all entity IDs from numeric (bigint) to string format. Our database schema (`id bigint` on artworks, artists, contacts) is incompatible. The sync has been running but processing 0 records.
-
-**Must fix before this feature:** Migrate all ID columns from `bigint` to `text`, re-sync all entities from Arternal with new string IDs. This affects artworks, artists, contacts, and all junction/extended tables.
+Arternal changed all entity IDs from numeric (bigint) to 8-char alphanumeric strings. **Migration completed 2026-04-02** — all ID columns migrated from `bigint` to `text`, all TypeScript types updated, all RPC functions recreated. This blocker is resolved.
