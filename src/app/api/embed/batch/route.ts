@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     const { embeddings, errors } = await generateImageEmbeddings(imageUrls);
 
     const now = new Date().toISOString();
-    const results: { artworkId: number; success: boolean; error?: string }[] = [];
+    const results: { artworkId: string; success: boolean; error?: string }[] = [];
 
     // Save each embedding to DB
     for (let i = 0; i < artworksWithImages.length; i++) {

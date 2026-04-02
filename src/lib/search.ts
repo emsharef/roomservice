@@ -9,7 +9,7 @@ export interface SearchParams {
   minPrice?: number;
   maxPrice?: number;
   medium?: string;
-  artistId?: number;
+  artistId?: string;
   limit?: number;
   keywordOffset?: number;
   semanticOffset?: number;

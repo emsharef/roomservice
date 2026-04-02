@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { entity, id } = body as { entity?: string; id?: number };
+  const { entity, id } = body as { entity?: string; id?: string };
 
   if (!entity || !["artworks", "artists", "contacts"].includes(entity)) {
     return NextResponse.json({ error: "Invalid entity type" }, { status: 400 });
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
 
   try {
     if (entity === "artworks") {
-      const result = await fetchInventoryItem(String(id));
+      const result = await fetchInventoryItem(id);
       const detail = result.data;
       const { error } = await admin
         .from("artworks")
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
         .eq("id", id);
       if (error) throw error;
     } else if (entity === "artists") {
-      const result = await fetchArtist(String(id));
+      const result = await fetchArtist(id);
       const detail = result.data;
       const { error } = await admin
         .from("artists")
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
         .eq("id", id);
       if (error) throw error;
     } else {
-      const result = await fetchContact(String(id));
+      const result = await fetchContact(id);
       const detail = result.data;
       const { error } = await admin
         .from("contacts")

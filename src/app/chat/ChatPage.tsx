@@ -15,7 +15,7 @@ interface Conversation {
 
 interface ResultCard {
   type: "artwork" | "contact" | "artist" | "prospect";
-  id: string | number;
+  id: string;
   title: string;
   subtitle?: string;
   image?: string;
