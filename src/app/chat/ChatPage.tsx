@@ -442,20 +442,11 @@ function AssistantMessage({ content, cardMap }: { content: string; cardMap?: Map
   cardPattern.lastIndex = 0;
 
   if (!cardMap || cardMap.size === 0 || !hasMarkers) {
-    // No cards — render as plain assistant bubble, strip any stray markers
-    const strippedMarkers = content.match(/<<card:\/[^>]+>>/g);
+    // No cards or no markers — render as plain assistant bubble, strip any stray markers
     return (
       <div className="flex justify-start">
         <div className="max-w-[85%] rounded-2xl bg-gray-100 px-4 py-3 text-sm leading-relaxed text-gray-800">
           {renderMarkdown(content.replace(/<<card:\/[^>]+>>/g, ""))}
-          {/* Debug info */}
-          {(strippedMarkers || (cardMap && cardMap.size > 0)) && (
-            <div className="mt-2 rounded bg-amber-50 p-2 text-[10px] text-amber-700">
-              <p>🔍 Debug: {strippedMarkers ? `${strippedMarkers.length} marker(s) stripped` : "no markers"} | cardMap: {cardMap?.size ?? 0} entries</p>
-              {strippedMarkers && <p>Markers: {strippedMarkers.join(", ")}</p>}
-              {cardMap && cardMap.size > 0 && <p>Cards: {[...cardMap.keys()].join(", ")}</p>}
-            </div>
-          )}
         </div>
       </div>
     );
