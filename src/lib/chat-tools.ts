@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchContactLists, fetchContactListMembers, fetchAllPages } from "@/lib/arternal";
 
 // ---------------------------------------------------------------------------
 // Tool definitions (Claude tool_use format)
@@ -29,7 +30,7 @@ export const CHAT_TOOLS = [
   {
     name: "search_contacts",
     description:
-      "Search contacts and collectors in the CRM. Use this to find people by name, company, location, tags, or art preferences. Returns contact info plus enriched collector profile data.",
+      "Search contacts and collectors in the CRM. Use this to find people by name, company, location, tags, art preferences, or contact list membership. Use list_contact_lists first to discover available lists, then pass a list_id here to filter by list. Returns contact info plus enriched collector profile data.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -39,6 +40,7 @@ export const CHAT_TOOLS = [
         tags: { type: "array", items: { type: "string" }, description: "Filter by CRM tags" },
         style_preferences: { type: "array", items: { type: "string" }, description: "Filter by collector style preferences (e.g., 'abstract', 'figurative')" },
         subject_preferences: { type: "array", items: { type: "string" }, description: "Filter by collector subject preferences" },
+        list_id: { type: "string", description: "Filter by Arternal contact list ID. Use list_contact_lists tool first to find available list IDs." },
         limit: { type: "number", description: "Max results (default 10, max 20)" },
       },
       required: [],
@@ -145,6 +147,18 @@ export const CHAT_TOOLS = [
       required: ["id"],
     },
   },
+  {
+    name: "list_contact_lists",
+    description:
+      "List available contact lists from the CRM. Returns list names, IDs, and member counts. Use this to discover which lists exist before filtering contacts by list membership with search_contacts.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        search: { type: "string", description: "Optional: filter lists by name" },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -176,6 +190,8 @@ export async function executeTool(
       return executeSearchProspects(admin, input);
     case "get_prospect":
       return executeGetProspect(admin, input);
+    case "list_contact_lists":
+      return executeListContactLists(input);
     default:
       return { result: { error: `Unknown tool: ${name}` }, summary: `Unknown tool: ${name}` };
   }
@@ -371,6 +387,24 @@ async function executeSearchContacts(
     };
   }
 
+  // If filtering by list, fetch member IDs from Arternal
+  let filterContactIds: string[] | null = null;
+  if (input.list_id && typeof input.list_id === "string") {
+    try {
+      const members = await fetchAllPages(
+        (params) => fetchContactListMembers(input.list_id as string, params),
+        {},
+        100,
+      );
+      filterContactIds = members.map((m) => m.id);
+      if (filterContactIds.length === 0) {
+        return { result: { count: 0, contacts: [] }, summary: "Contact list is empty" };
+      }
+    } catch (e) {
+      return { result: { error: `Failed to fetch contact list: ${e}` }, summary: "Failed to fetch contact list" };
+    }
+  }
+
   // Standard search via RPC (name, location, type filters)
   const { data, error } = await admin.rpc("search_contacts", {
     filter_name: (input.query as string) || null,
@@ -378,6 +412,7 @@ async function executeSearchContacts(
     filter_company: null,
     filter_location: (input.location as string) || null,
     filter_type: (input.type as string) || null,
+    filter_contact_ids: filterContactIds,
     sort_column: "last_name",
     sort_direction: "asc",
     page_size: limit,
@@ -1008,4 +1043,34 @@ async function executeGetProspect(
     },
     summary: `Fetched prospect: ${prospect.display_name || prospect.input_name}`,
   };
+}
+
+async function executeListContactLists(
+  input: Record<string, unknown>,
+): Promise<{ result: unknown; summary: string }> {
+  try {
+    const response = await fetchContactLists({ limit: "100", sort: "name", order: "asc" });
+
+    let lists = response.data.filter(
+      (list) => !list.live && list.name.toLowerCase() !== "selection cart"
+    );
+
+    if (input.search && typeof input.search === "string") {
+      const q = input.search.toLowerCase();
+      lists = lists.filter((l) => l.name.toLowerCase().includes(q));
+    }
+
+    const results = lists.map((l) => ({
+      id: l.id,
+      name: l.name,
+      contact_count: l.contact_count,
+    }));
+
+    return {
+      result: { count: results.length, lists: results },
+      summary: `Found ${results.length} contact lists`,
+    };
+  } catch (e) {
+    return { result: { error: `Failed to fetch contact lists: ${e}` }, summary: "Failed to fetch contact lists" };
+  }
 }
