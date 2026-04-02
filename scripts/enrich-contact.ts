@@ -1,7 +1,7 @@
 import { enrichContact } from "../src/lib/enrichment";
 import { createAdminClient } from "../src/lib/supabase/admin";
 
-const contactId = parseInt(process.argv[2], 10);
+const contactId = process.argv[2];
 if (!contactId) {
   console.error("Usage: npx tsx --env-file=.env.local scripts/enrich-contact.ts <contactId>");
   process.exit(1);

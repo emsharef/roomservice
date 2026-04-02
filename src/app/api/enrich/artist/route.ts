@@ -29,9 +29,9 @@ export async function POST(request: NextRequest) {
 
   const { artistId } = await request.json();
 
-  if (!artistId || typeof artistId !== "number") {
+  if (!artistId || typeof artistId !== "string") {
     return NextResponse.json(
-      { error: "artistId (number) is required" },
+      { error: "artistId (string) is required" },
       { status: 400 },
     );
   }

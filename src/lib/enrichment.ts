@@ -259,7 +259,7 @@ Return ONLY valid JSON, no other text.`;
 
 /** Enrich a single collector contact via Claude with web search */
 export async function enrichContact(
-  contactId: number,
+  contactId: string,
 ): Promise<CollectorEnrichment> {
   const admin = createAdminClient();
 
@@ -1142,7 +1142,7 @@ Return ONLY valid JSON, no other text.`;
 
 /** Enrich a single artist via Claude with web search */
 export async function enrichArtist(
-  artistId: number,
+  artistId: string,
 ): Promise<ArtistEnrichment> {
   const admin = createAdminClient();
 

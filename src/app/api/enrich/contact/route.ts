@@ -29,9 +29,9 @@ export async function POST(request: NextRequest) {
 
   const { contactId } = await request.json();
 
-  if (!contactId || typeof contactId !== "number") {
+  if (!contactId || typeof contactId !== "string") {
     return NextResponse.json(
-      { error: "contactId (number) is required" },
+      { error: "contactId (string) is required" },
       { status: 400 },
     );
   }
