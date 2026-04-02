@@ -244,6 +244,37 @@ export interface ContactListResponse {
   pagination: Pagination;
 }
 
+export interface ArternalContactList {
+  id: string;
+  name: string;
+  description: string | null;
+  live: boolean;
+  private: boolean;
+  contact_count: number;
+}
+
+export interface ArternalContactListsResponse {
+  success: boolean;
+  data: ArternalContactList[];
+  pagination: Pagination;
+}
+
+export interface ArternalContactListMember {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  company: string | null;
+  type: string | null;
+}
+
+export interface ArternalContactListMembersResponse {
+  success: boolean;
+  data: ArternalContactListMember[];
+  pagination: Pagination;
+}
+
 // ---------------------------------------------------------------------------
 // Read functions
 // ---------------------------------------------------------------------------
@@ -274,6 +305,14 @@ export function fetchContacts(params?: Record<string, string>) {
 
 export function fetchContact(id: string) {
   return arternaFetch<ContactDetailResponse>(`/contacts/${id}`);
+}
+
+export function fetchContactLists(params?: Record<string, string>) {
+  return arternaFetch<ArternalContactListsResponse>("/contact-lists", params);
+}
+
+export function fetchContactListMembers(listId: string, params?: Record<string, string>) {
+  return arternaFetch<ArternalContactListMembersResponse>(`/contact-lists/${listId}/contacts`, params);
 }
 
 // ---------------------------------------------------------------------------

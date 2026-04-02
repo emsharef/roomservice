@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { fetchContactLists, fetchContactListMembers, fetchAllPages, type ArternalContactList } from "@/lib/arternal";
 import ContactsList from "./ContactsList";
 
 export default async function ContactsPage({
@@ -16,8 +17,35 @@ export default async function ContactsPage({
   const filterCompany = typeof params.filter_company === "string" ? params.filter_company : null;
   const filterLocation = typeof params.filter_location === "string" ? params.filter_location : null;
   const filterType = typeof params.filter_type === "string" ? params.filter_type : null;
+  const filterList = typeof params.filter_list === "string" ? params.filter_list : null;
   const sort = typeof params.sort === "string" ? params.sort : "display_name";
   const order = typeof params.order === "string" ? params.order : "asc";
+
+  // Fetch available contact lists from Arternal (for dropdown)
+  let contactLists: ArternalContactList[] = [];
+  try {
+    const listsResponse = await fetchContactLists({ limit: "100", sort: "name", order: "asc" });
+    contactLists = listsResponse.data.filter(
+      (list) => !list.live && list.name.toLowerCase() !== "selection cart"
+    );
+  } catch {
+    // If Arternal is down, just show no lists
+  }
+
+  // If a list filter is active, fetch all member IDs from Arternal
+  let filterContactIds: string[] | null = null;
+  if (filterList) {
+    try {
+      const members = await fetchAllPages(
+        (params) => fetchContactListMembers(filterList, params),
+        {},
+        100,
+      );
+      filterContactIds = members.map((m) => m.id);
+    } catch {
+      // If fetch fails, don't filter
+    }
+  }
 
   const supabase = await createClient();
 
@@ -27,6 +55,7 @@ export default async function ContactsPage({
     filter_company: filterCompany,
     filter_location: filterLocation,
     filter_type: filterType,
+    filter_contact_ids: filterContactIds,
     sort_column: sort,
     sort_direction: order,
     page_size: pageSize,
@@ -55,6 +84,8 @@ export default async function ContactsPage({
         sort={sort}
         order={order}
         error={error?.message ?? null}
+        contactLists={contactLists}
+        activeListId={filterList}
       />
     </div>
   );

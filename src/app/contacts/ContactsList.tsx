@@ -29,12 +29,19 @@ interface Filters {
   type: string;
 }
 
+interface ContactList {
+  id: string;
+  name: string;
+  contact_count: number;
+}
+
 const FILTER_LABELS: Record<string, string> = {
   name: "Name",
   email: "Email",
   company: "Company",
   location: "Location",
   type: "Type",
+  list: "List",
 };
 
 export default function ContactsList({
@@ -45,6 +52,8 @@ export default function ContactsList({
   sort,
   order,
   error,
+  contactLists,
+  activeListId,
 }: {
   contacts: ContactItem[];
   totalCount: number;
@@ -53,6 +62,8 @@ export default function ContactsList({
   sort: string;
   order: string;
   error: string | null;
+  contactLists?: ContactList[];
+  activeListId?: string | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -90,9 +101,17 @@ export default function ContactsList({
     updateParams({ [`filter_${column}`]: value });
   }
 
+  function handleListFilter(listId: string) {
+    updateParams({ filter_list: listId });
+  }
+
   function clearFilters() {
     router.push("/contacts");
   }
+
+  const activeListName = activeListId
+    ? contactLists?.find((l) => l.id === activeListId)?.name ?? activeListId
+    : null;
 
   const formatLocation = (contact: ContactItem) => {
     const parts = [
@@ -106,9 +125,9 @@ export default function ContactsList({
   return (
     <div>
       <ActiveFilters
-        filters={filters}
+        filters={{ ...filters, ...(activeListName ? { list: activeListName } : {}) }}
         labels={FILTER_LABELS}
-        onRemove={(key) => handleFilter(key, "")}
+        onRemove={(key) => key === "list" ? updateParams({ filter_list: "" }) : handleFilter(key, "")}
         onClearAll={clearFilters}
       />
 
@@ -118,10 +137,26 @@ export default function ContactsList({
         </div>
       )}
 
-      <p className="mb-3 text-sm text-gray-500">
-        {totalCount.toLocaleString()} contacts total
-        {totalPages > 1 && ` \u00b7 Page ${currentPage} of ${totalPages}`}
-      </p>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-sm text-gray-500">
+          {totalCount.toLocaleString()} contacts{activeListName ? ` in "${activeListName}"` : " total"}
+          {totalPages > 1 && ` \u00b7 Page ${currentPage} of ${totalPages}`}
+        </p>
+        {contactLists && contactLists.length > 0 && (
+          <select
+            value={activeListId ?? ""}
+            onChange={(e) => handleListFilter(e.target.value)}
+            className="text-sm border border-gray-300 rounded-md px-2 py-1 text-gray-700 bg-white"
+          >
+            <option value="">All contacts</option>
+            {contactLists.map((list) => (
+              <option key={list.id} value={list.id}>
+                {list.name} ({list.contact_count})
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
         <table className="min-w-full divide-y divide-gray-200">
