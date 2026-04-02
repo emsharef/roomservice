@@ -16,7 +16,7 @@ interface BatchStats {
 }
 
 interface ErrorEntry {
-  artworkId: number;
+  artworkId: string;
   title: string;
   error: string;
 }
@@ -72,7 +72,7 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
     pauseRef.current = false;
 
     // Fetch all artworks that have images (paginated to bypass 1000 row limit)
-    const artworks: { id: number; title: string | null; primary_image_url: string }[] =
+    const artworks: { id: string; title: string | null; primary_image_url: string }[] =
       await fetchAllRows(async (offset, limit) =>
         await supabase
           .from("artworks")
@@ -88,7 +88,7 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
 
     if (mode === "incremental") {
       // Fetch all extended rows (paginated), using timestamps not embedding vectors
-      const extended: { artwork_id: number; clip_generated_at: string | null; vision_analyzed_at: string | null }[] =
+      const extended: { artwork_id: string; clip_generated_at: string | null; vision_analyzed_at: string | null }[] =
         await fetchAllRows(async (offset, limit) =>
           await supabase
             .from("artworks_extended")
@@ -97,7 +97,7 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
             .range(offset, offset + limit - 1),
         );
 
-      const processedIds = new Set<number>();
+      const processedIds = new Set<string>();
       for (const row of extended) {
         if (type === "embed" && row.clip_generated_at !== null) {
           processedIds.add(row.artwork_id);

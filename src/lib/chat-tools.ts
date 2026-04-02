@@ -67,7 +67,7 @@ export const CHAT_TOOLS = [
       type: "object" as const,
       properties: {
         type: { type: "string", enum: ["artwork", "artist", "contact"], description: "Record type" },
-        id: { type: "number", description: "Record ID" },
+        id: { type: "string", description: "Record ID" },
       },
       required: ["type", "id"],
     },
@@ -80,7 +80,7 @@ export const CHAT_TOOLS = [
       type: "object" as const,
       properties: {
         source_type: { type: "string", enum: ["artist", "artwork", "contact"], description: "Type of the source record" },
-        source_id: { type: "number", description: "ID of the source record" },
+        source_id: { type: "string", description: "ID of the source record" },
         target_type: { type: "string", enum: ["artist", "artwork", "contact"], description: "Type of records to match against" },
         limit: { type: "number", description: "Max matches (default 10)" },
       },
@@ -94,7 +94,7 @@ export const CHAT_TOOLS = [
     input_schema: {
       type: "object" as const,
       properties: {
-        artwork_id: { type: "number", description: "Source artwork ID" },
+        artwork_id: { type: "string", description: "Source artwork ID" },
         embedding_type: { type: "string", enum: ["clip", "description"], description: "Type of similarity: 'clip' for visual, 'description' for conceptual" },
         status: { type: "string", enum: ["available", "sold", "hold", "nfs"], description: "Filter results by status" },
         limit: { type: "number", description: "Max results (default 10)" },
@@ -387,7 +387,7 @@ async function executeSearchContacts(
   if (error) return { result: { error: error.message }, summary: "Search failed" };
 
   const contactIds = (data || []).map((c: any) => c.id);
-  let enrichments: Record<number, any> = {};
+  let enrichments: Record<string, any> = {};
 
   if (contactIds.length > 0) {
     const { data: extended } = await admin
@@ -445,7 +445,7 @@ async function executeSearchArtists(
   if (error) return { result: { error: error.message }, summary: "Search failed" };
 
   const artistIds = (data || []).map((a: any) => a.id);
-  let enrichments: Record<number, any> = {};
+  let enrichments: Record<string, any> = {};
 
   if (artistIds.length > 0) {
     const { data: extended } = await admin
@@ -536,7 +536,7 @@ async function executeGetRecord(
       const { data: works } = await admin
         .from("artworks")
         .select("id, title, year, medium, price, status, primary_image_url")
-        .contains("artist_ids", [Number(id)])
+        .contains("artist_ids", [id])
         .order("year", { ascending: false })
         .limit(20);
 
@@ -602,7 +602,7 @@ async function executeFindMatches(
     const { data: works } = await admin
       .from("artworks")
       .select("id")
-      .contains("artist_ids", [Number(source_id)]);
+      .contains("artist_ids", [source_id]);
     if (works && works.length > 0) {
       const { data: extended } = await admin
         .from("artworks_extended")
@@ -715,7 +715,7 @@ async function executeFindMatches(
       .from("artwork_artists")
       .select("artwork_id, display_name")
       .in("artwork_id", scored.map((s) => s.artwork_id));
-    const artistMap = new Map<number, string[]>();
+    const artistMap = new Map<string, string[]>();
     for (const link of artistLinks || []) {
       if (!artistMap.has(link.artwork_id)) artistMap.set(link.artwork_id, []);
       artistMap.get(link.artwork_id)!.push(link.display_name);
@@ -752,7 +752,7 @@ async function executeFindSimilarArtworks(
   admin: SupabaseAdmin,
   input: Record<string, unknown>,
 ): Promise<{ result: unknown; summary: string }> {
-  const artworkId = Number(input.artwork_id);
+  const artworkId = input.artwork_id as string;
   const embeddingType = (input.embedding_type as string) || "clip";
   const embeddingCol = embeddingType === "description" ? "description_embedding" : "clip_embedding";
   const limit = Math.min(Number(input.limit) || 10, 20);

@@ -2,7 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import SyncDashboard from "./SyncDashboard";
 
 interface SyncLogEntry {
-  id: number;
+  id: string;
   entity_type: string;
   direction: string;
   status: string;

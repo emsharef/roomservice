@@ -142,7 +142,7 @@ export default async function InventoryDetailPage({
 
             {artists.length > 0 && (
               <p className="text-lg text-gray-600 mt-1">
-                {artists.map((a: { artist_id: number; display_name: string | null }, i: number) => (
+                {artists.map((a: { artist_id: string; display_name: string | null }, i: number) => (
                   <span key={a.artist_id}>
                     {i > 0 && ", "}
                     <Link href={`/artists/${a.artist_id}`} className="hover:text-gray-900 hover:underline">
@@ -186,7 +186,7 @@ export default async function InventoryDetailPage({
               </h3>
               {artists.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
-                  {artists.map((artist: { artist_id: number; display_name: string | null }) => (
+                  {artists.map((artist: { artist_id: string; display_name: string | null }) => (
                     <Link
                       key={artist.artist_id}
                       href={`/artists/${artist.artist_id}`}
@@ -211,7 +211,7 @@ export default async function InventoryDetailPage({
             All Images ({item.images.length})
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {item.images.map((img: { id: number; url: string; title: string | null; type: string | null; is_primary: boolean }) => (
+            {item.images.map((img: { id: string; url: string; title: string | null; type: string | null; is_primary: boolean }) => (
               <div key={img.id} className="relative group">
                 <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square flex items-center justify-center">
                   <img

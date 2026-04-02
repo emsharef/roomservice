@@ -7,7 +7,6 @@ export default async function ContactDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const contactId = parseInt(id, 10);
 
   const supabase = await createClient();
 
@@ -15,12 +14,12 @@ export default async function ContactDetailPage({
     supabase
       .from("contacts")
       .select("*")
-      .eq("id", contactId)
+      .eq("id", id)
       .single(),
     supabase
       .from("contacts_extended")
       .select("collector_brief, inferred_preferences, enrichment_status, enrichment_confidence, engagement_level, known_artists, style_preferences, subject_preferences, mood_preferences, board_memberships, classification")
-      .eq("contact_id", contactId)
+      .eq("contact_id", id)
       .single(),
   ]);
 
@@ -70,7 +69,7 @@ export default async function ContactDetailPage({
 
   const tags: string[] = contact.tags ?? [];
   const notes: string[] = contact.notes ?? [];
-  const recentTransactions: { id: number; title: string; status: string; total_price: string; created_at: string }[] = contact.recent_transactions ?? [];
+  const recentTransactions: { id: string; title: string; status: string; total_price: string; created_at: string }[] = contact.recent_transactions ?? [];
   const recentActivities: { type: string; text: string | null; created_at: string }[] = contact.recent_activities ?? [];
 
   return (

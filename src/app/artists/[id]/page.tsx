@@ -57,25 +57,23 @@ export default async function ArtistDetailPage({
   const sp = await searchParams;
   const page = Math.max(1, parseInt(typeof sp.page === "string" ? sp.page : "1", 10));
   const offset = (page - 1) * ITEMS_PER_PAGE;
-  const artistId = parseInt(id, 10);
-
   const supabase = await createClient();
 
   const [artistResult, extendedResult, worksResult] = await Promise.all([
     supabase
       .from("artists")
       .select("*")
-      .eq("id", artistId)
+      .eq("id", id)
       .single(),
     supabase
       .from("artists_extended")
       .select("enrichment_brief, formatted_bio, market_context, enrichment_status, enrichment_confidence, primary_mediums, style_tags, subject_tags, mood_tags")
-      .eq("artist_id", artistId)
+      .eq("artist_id", id)
       .single(),
     supabase
       .from("artworks")
       .select("id, title, catalog_number, year, medium, price, price_currency, status, primary_image_url", { count: "exact" })
-      .contains("artist_ids", [artistId])
+      .contains("artist_ids", [id])
       .order("arternal_updated_at", { ascending: false, nullsFirst: false })
       .range(offset, offset + ITEMS_PER_PAGE - 1),
   ]);

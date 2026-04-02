@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
 
     // Duplicate detection: check contacts table by name and email
     const duplicateCandidates: Array<{
-      id: number;
+      id: string;
       display_name: string;
       email: string | null;
       company: string | null;

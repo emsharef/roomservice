@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 interface SearchResult {
-  artwork_id: number;
+  artwork_id: string;
   title: string;
   year: string | null;
   medium: string | null;
@@ -300,10 +300,7 @@ function SearchContent() {
   // Handle "more like this" on mount
   useEffect(() => {
     if (similarParam) {
-      const artworkId = parseInt(similarParam, 10);
-      if (!isNaN(artworkId)) {
-        performSearch({ artworkId });
-      }
+      performSearch({ artworkId: similarParam });
     }
   }, [similarParam, performSearch]);
 

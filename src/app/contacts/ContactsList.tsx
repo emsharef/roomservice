@@ -5,7 +5,7 @@ import { useCallback } from "react";
 import { ColumnHeader, ActiveFilters, Pagination } from "@/components/TableControls";
 
 interface ContactItem {
-  id: number;
+  id: string;
   display_name: string;
   first_name: string | null;
   last_name: string | null;

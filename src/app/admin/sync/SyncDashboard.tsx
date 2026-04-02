@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 interface SyncLogEntry {
-  id: number;
+  id: string;
   entity_type: string;
   direction: string;
   status: string;
@@ -144,7 +144,7 @@ export default function SyncDashboard({
         .is("detail_synced_at", null)
         .limit(10000);
 
-      const detailIds = (needsDetail ?? []).map((r: { id: number }) => r.id);
+      const detailIds = (needsDetail ?? []).map((r: { id: string }) => r.id);
 
       if (detailIds.length > 0) {
         prog.phase = "detailing";

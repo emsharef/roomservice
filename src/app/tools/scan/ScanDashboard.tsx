@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 interface DuplicateCandidate {
-  id: number;
+  id: string;
   display_name: string;
   email: string | null;
   company: string | null;
@@ -33,7 +33,7 @@ interface StagedContact {
   ocr_confidence: "high" | "medium" | "low" | null;
   duplicate_candidates: DuplicateCandidate[];
   status: "draft" | "approved" | "written" | "error";
-  arternal_contact_id: number | null;
+  arternal_contact_id: string | null;
   error_message: string | null;
   created_by: string | null;
   created_at: string;

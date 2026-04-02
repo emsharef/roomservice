@@ -55,17 +55,17 @@ export type OnProgress = (progress: SyncProgress) => void;
 // ---------------------------------------------------------------------------
 
 async function fetchDetailsBatch<T>(
-  ids: number[],
+  ids: string[],
   fetcher: (id: string) => Promise<{ data: T }>,
   concurrency: number,
   onBatchDone: (done: number) => void,
   errors: string[],
   entityLabel: string,
-): Promise<Map<number, T>> {
-  const results = new Map<number, T>();
+): Promise<Map<string, T>> {
+  const results = new Map<string, T>();
   let done = 0;
 
-  async function fetchWithRetry(id: number, retries = 6): Promise<{ id: number; data: T }> {
+  async function fetchWithRetry(id: string, retries = 6): Promise<{ id: string; data: T }> {
     for (let attempt = 0; attempt < retries; attempt++) {
       try {
         const resp = await fetcher(String(id));
@@ -167,7 +167,7 @@ export async function syncArtworks(opts?: SyncOptions): Promise<SyncResult> {
     .from("artworks")
     .select("id");
   const existingIds = new Set(
-    (existingRows ?? []).map((r: { id: number }) => r.id),
+    (existingRows ?? []).map((r: { id: string }) => r.id),
   );
 
   const total = itemsToProcess.length;
@@ -253,7 +253,7 @@ export async function syncArtworks(opts?: SyncOptions): Promise<SyncResult> {
     .select("id")
     .is("detail_synced_at", null)
     .limit(10000);
-  const missingIds = (missingDetailRows ?? []).map((r: { id: number }) => r.id);
+  const missingIds = (missingDetailRows ?? []).map((r: { id: string }) => r.id);
   const detailIds = [...new Set([...processedIds, ...missingIds])];
 
   if (detailIds.length > 0) {
@@ -319,7 +319,7 @@ export async function syncArtists(opts?: SyncOptions): Promise<SyncResult> {
     : items;
 
   const { data: existingRows } = await supabase.from("artists").select("id");
-  const existingIds = new Set((existingRows ?? []).map((r: { id: number }) => r.id));
+  const existingIds = new Set((existingRows ?? []).map((r: { id: string }) => r.id));
 
   const total = itemsToProcess.length;
   result.skipped = items.length - total;
@@ -368,7 +368,7 @@ export async function syncArtists(opts?: SyncOptions): Promise<SyncResult> {
     .select("id")
     .is("detail_synced_at", null)
     .limit(10000);
-  const missingArtistIds = (missingArtistDetailRows ?? []).map((r: { id: number }) => r.id);
+  const missingArtistIds = (missingArtistDetailRows ?? []).map((r: { id: string }) => r.id);
   const artistDetailIds = [...new Set([...processedArtistIds, ...missingArtistIds])];
 
   if (artistDetailIds.length > 0) {
@@ -434,7 +434,7 @@ export async function syncContacts(opts?: SyncOptions): Promise<SyncResult> {
     : items;
 
   const { data: existingRows } = await supabase.from("contacts").select("id");
-  const existingIds = new Set((existingRows ?? []).map((r: { id: number }) => r.id));
+  const existingIds = new Set((existingRows ?? []).map((r: { id: string }) => r.id));
 
   const total = itemsToProcess.length;
   result.skipped = items.length - total;
@@ -500,7 +500,7 @@ export async function syncContacts(opts?: SyncOptions): Promise<SyncResult> {
     .select("id")
     .is("detail_synced_at", null)
     .limit(10000);
-  const missingContactIds = (missingContactDetailRows ?? []).map((r: { id: number }) => r.id);
+  const missingContactIds = (missingContactDetailRows ?? []).map((r: { id: string }) => r.id);
   const contactDetailIds = [...new Set([...processedContactIds, ...missingContactIds])];
 
   if (contactDetailIds.length > 0) {

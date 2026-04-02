@@ -33,7 +33,7 @@ async function arternaFetch<T>(
 // ---------------------------------------------------------------------------
 
 export interface Artist {
-  id: number;
+  id: string;
   first_name: string;
   last_name: string;
   alias: string | null;
@@ -41,7 +41,7 @@ export interface Artist {
 }
 
 export interface InventoryImage {
-  id: number;
+  id: string;
   url: string;
   title: string;
   type: string;
@@ -49,7 +49,7 @@ export interface InventoryImage {
 }
 
 export interface InventoryItem {
-  id: number;
+  id: string;
   catalog_number: string | null;
   title: string;
   year: string | null;
@@ -94,7 +94,7 @@ export interface SingleInventoryResponse {
 }
 
 export interface ArtistListItem {
-  id: number;
+  id: string;
   first_name: string;
   last_name: string;
   alias: string | null;
@@ -111,7 +111,7 @@ export interface ArtistListItem {
 }
 
 export interface ArtistDetail {
-  id: number;
+  id: string;
   first_name: string;
   last_name: string;
   alias: string | null;
@@ -131,7 +131,7 @@ export interface ArtistDetail {
 }
 
 export interface ArtistWork {
-  id: number;
+  id: string;
   catalog_number: string | null;
   title: string;
   year: string | null;
@@ -164,7 +164,7 @@ export interface ArtistWorksResponse {
 }
 
 export interface ContactItem {
-  id: number;
+  id: string;
   first_name: string;
   last_name: string;
   email: string | null;
@@ -190,7 +190,7 @@ export interface ContactItem {
 }
 
 export interface ContactTransaction {
-  id: number;
+  id: string;
   title: string;
   status: string;
   total_price: string;
@@ -204,7 +204,7 @@ export interface ContactActivity {
 }
 
 export interface ContactDetail {
-  id: number;
+  id: string;
   first_name: string;
   last_name: string;
   email: string | null;
@@ -281,7 +281,7 @@ export function fetchContact(id: string) {
 // ---------------------------------------------------------------------------
 
 export async function updateArtist(
-  id: number,
+  id: string,
   data: Partial<ArtistListItem>,
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/artists/${id}`, {
@@ -299,7 +299,7 @@ export async function updateArtist(
 }
 
 export async function updateContact(
-  id: number,
+  id: string,
   data: Partial<ContactItem>,
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/contacts/${id}`, {

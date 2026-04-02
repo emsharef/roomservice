@@ -4,7 +4,7 @@ import { generateTextEmbedding, generateImageEmbedding } from "@/lib/embeddings"
 export interface SearchParams {
   query?: string;           // text query like "blue abstract painting"
   imageUrl?: string;        // image URL for visual similarity
-  artworkId?: number;       // "more like this"
+  artworkId?: string;       // "more like this"
   status?: string;
   minPrice?: number;
   maxPrice?: number;
@@ -16,7 +16,7 @@ export interface SearchParams {
 }
 
 export interface SearchResult {
-  artwork_id: number;
+  artwork_id: string;
   title: string;
   year: string | null;
   medium: string | null;

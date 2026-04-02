@@ -86,7 +86,7 @@ async function upsertArtworks(
     .from("artworks")
     .select("id")
     .in("id", items.map((i) => i.id));
-  const existingIds = new Set((existingRows ?? []).map((r: { id: number }) => r.id));
+  const existingIds = new Set((existingRows ?? []).map((r: { id: string }) => r.id));
 
   let created = 0;
   let updated = 0;
@@ -167,7 +167,7 @@ async function upsertArtists(
     .from("artists")
     .select("id")
     .in("id", items.map((i) => i.id));
-  const existingIds = new Set((existingRows ?? []).map((r: { id: number }) => r.id));
+  const existingIds = new Set((existingRows ?? []).map((r: { id: string }) => r.id));
 
   let created = 0;
   let updated = 0;
@@ -233,7 +233,7 @@ async function upsertContacts(
     .from("contacts")
     .select("id")
     .in("id", items.map((i) => i.id));
-  const existingIds = new Set((existingRows ?? []).map((r: { id: number }) => r.id));
+  const existingIds = new Set((existingRows ?? []).map((r: { id: string }) => r.id));
 
   let created = 0;
   let updated = 0;

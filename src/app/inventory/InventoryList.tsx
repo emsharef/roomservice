@@ -5,7 +5,7 @@ import { useCallback } from "react";
 import { ColumnHeader, ActiveFilters, Pagination } from "@/components/TableControls";
 
 interface InventoryItem {
-  id: number;
+  id: string;
   title: string | null;
   catalog_number: string | null;
   year: string | null;
