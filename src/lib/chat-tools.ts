@@ -18,6 +18,8 @@ export const CHAT_TOOLS = [
         medium: { type: "string", description: "Filter by medium (e.g., 'oil on canvas', 'bronze')" },
         min_price: { type: "number", description: "Minimum price in USD" },
         max_price: { type: "number", description: "Maximum price in USD" },
+        min_year: { type: "number", description: "Minimum year (e.g., 2020)" },
+        max_year: { type: "number", description: "Maximum year (e.g., 2025)" },
         status: { type: "string", enum: ["available", "sold", "hold", "nfs"], description: "Filter by availability status" },
         style_tags: { type: "array", items: { type: "string" }, description: "Filter by style tags (e.g., 'abstract', 'figurative')" },
         subject_tags: { type: "array", items: { type: "string" }, description: "Filter by subject tags (e.g., 'landscape', 'portrait')" },
@@ -224,7 +226,9 @@ async function executeSearchArtworks(
 
     if (error) return { result: { error: error.message }, summary: "Search failed" };
 
-    const results = (data || []).map(formatArtworkResult);
+    let results = (data || []).map(formatArtworkResult);
+    if (input.min_year) results = results.filter((r: any) => r.year && parseInt(r.year, 10) >= Number(input.min_year));
+    if (input.max_year) results = results.filter((r: any) => r.year && parseInt(r.year, 10) <= Number(input.max_year));
     return {
       result: { count: results.length, total: data?.[0]?.total_count || results.length, artworks: results },
       summary: `Found ${results.length} artworks matching "${input.query}"`,
@@ -249,9 +253,11 @@ async function executeSearchArtworks(
 
   let results = (data || []).map(formatArtworkResult);
 
-  // Apply price filters client-side if needed (RPC doesn't have price params)
+  // Apply price and year filters client-side (RPC doesn't have these params)
   if (input.min_price) results = results.filter((r: any) => r.price >= Number(input.min_price));
   if (input.max_price) results = results.filter((r: any) => r.price <= Number(input.max_price));
+  if (input.min_year) results = results.filter((r: any) => r.year && parseInt(r.year, 10) >= Number(input.min_year));
+  if (input.max_year) results = results.filter((r: any) => r.year && parseInt(r.year, 10) <= Number(input.max_year));
 
   // If tag filters specified, query artworks_extended and filter
   if (input.style_tags || input.subject_tags || input.mood_tags) {
