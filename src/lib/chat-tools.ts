@@ -13,8 +13,8 @@ export const CHAT_TOOLS = [
     input_schema: {
       type: "object" as const,
       properties: {
-        query: { type: "string", description: "Search by a single term or phrase — matches against title, catalog number, or artist name individually. Use short queries like 'sun' or 'landscape', not combined 'Title Artist Name'. To search by artist, use the separate artist_name param instead." },
-        artist_name: { type: "string", description: "Filter by artist name (partial match). Use this instead of putting artist names in the query param." },
+        query: { type: "string", description: "Search by title, catalog number, or artist name. The query is matched against each field individually — do not combine title and artist name in one query. To filter by artist, use the artist_name param." },
+        artist_name: { type: "string", description: "Filter by artist name (partial match)" },
         medium: { type: "string", description: "Filter by medium (e.g., 'oil on canvas', 'bronze')" },
         min_price: { type: "number", description: "Minimum price in USD" },
         max_price: { type: "number", description: "Maximum price in USD" },
