@@ -301,8 +301,9 @@ function artworkDisplayTitle(row: any): string {
 }
 
 function formatArtworkResult(row: any) {
+  const id = row.id || row.artwork_id;
   return {
-    id: row.id,
+    id,
     title: row.title,
     display_title: artworkDisplayTitle(row),
     artist_names: row.artist_names || null,
@@ -313,7 +314,7 @@ function formatArtworkResult(row: any) {
     price_currency: row.price_currency,
     status: row.status || row.work_status,
     primary_image_url: row.primary_image_url,
-    link: `/inventory/${row.id}`,
+    link: `/inventory/${id}`,
   };
 }
 
@@ -818,21 +819,24 @@ async function executeFindSimilarArtworks(
   if (error) return { result: { error: error.message }, summary: "Search failed" };
 
   const results = (data || [])
-    .filter((r: any) => r.id !== artworkId)
+    .filter((r: any) => (r.id || r.artwork_id) !== artworkId)
     .slice(0, limit)
-    .map((r: any) => ({
-      id: r.id,
-      title: r.title,
-      display_title: artworkDisplayTitle(r),
-      artist_names: r.artist_names,
-      year: r.year,
-      medium: r.medium,
-      price: r.price,
-      status: r.status,
-      similarity: r.similarity,
-      primary_image_url: r.primary_image_url,
-      link: `/inventory/${r.id}`,
-    }));
+    .map((r: any) => {
+      const rid = r.id || r.artwork_id;
+      return {
+        id: rid,
+        title: r.title,
+        display_title: artworkDisplayTitle(r),
+        artist_names: r.artist_names,
+        year: r.year,
+        medium: r.medium,
+        price: r.price,
+        status: r.status,
+        similarity: r.similarity,
+        primary_image_url: r.primary_image_url,
+        link: `/inventory/${rid}`,
+      };
+    });
 
   return {
     result: { count: results.length, similar_artworks: results },
