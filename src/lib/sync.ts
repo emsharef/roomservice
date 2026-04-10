@@ -12,6 +12,12 @@ import {
   type ContactItem,
 } from "@/lib/arternal";
 
+/** Sanitize API timestamp: return valid ISO string or null for empty objects/undefined */
+function toTimestamp(val: unknown): string | null {
+  if (!val || typeof val !== "string") return null;
+  return val;
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -196,8 +202,8 @@ export async function syncArtworks(opts?: SyncOptions): Promise<SyncResult> {
           primary_image_url: item.primary_image_url,
           url: item.url,
           artist_ids: item.artists.map((a) => a.id),
-          arternal_created_at: item.created_at,
-          arternal_updated_at: item.updated_at,
+          arternal_created_at: toTimestamp(item.created_at),
+          arternal_updated_at: toTimestamp(item.updated_at),
           synced_at: new Date().toISOString(),
         },
         { onConflict: "id" },
@@ -335,7 +341,7 @@ export async function syncArtists(opts?: SyncOptions): Promise<SyncResult> {
           death_year: item.death_year != null ? String(item.death_year) : null,
           bio: item.bio, country: item.country, life_dates: item.life_dates,
           work_count: item.work_count, catalog_count: item.catalog_count,
-          arternal_created_at: item.created_at, arternal_updated_at: item.updated_at,
+          arternal_created_at: toTimestamp(item.created_at), arternal_updated_at: toTimestamp(item.updated_at),
           synced_at: new Date().toISOString(),
         },
         { onConflict: "id" },
@@ -423,6 +429,8 @@ export async function syncContacts(opts?: SyncOptions): Promise<SyncResult> {
     onPage: isIncremental && updatedSince
       ? (page) => {
           const cutoff = new Date(updatedSince).getTime();
+          // If timestamps are missing, can't determine cutoff — process all
+          if (page.some((i) => !i.updated_at)) return true;
           if (page.every((i) => new Date(i.updated_at).getTime() <= cutoff)) stopFetching = true;
           return !stopFetching;
         }
@@ -430,7 +438,7 @@ export async function syncContacts(opts?: SyncOptions): Promise<SyncResult> {
   });
 
   const itemsToProcess = isIncremental && updatedSince
-    ? items.filter((i) => new Date(i.updated_at).getTime() > new Date(updatedSince).getTime())
+    ? items.filter((i) => !i.updated_at || new Date(i.updated_at).getTime() > new Date(updatedSince).getTime())
     : items;
 
   const { data: existingRows } = await supabase.from("contacts").select("id");
@@ -460,8 +468,8 @@ export async function syncContacts(opts?: SyncOptions): Promise<SyncResult> {
           primary_zip: item.primary_address?.zip ?? null,
           primary_country: item.primary_country,
           primary_address_formatted: item.primary_address?.formatted ?? null,
-          arternal_created_at: item.created_at,
-          arternal_updated_at: item.updated_at,
+          arternal_created_at: toTimestamp(item.created_at),
+          arternal_updated_at: toTimestamp(item.updated_at),
           synced_at: new Date().toISOString(),
         },
         { onConflict: "id" },

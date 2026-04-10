@@ -10,6 +10,11 @@ import {
   type ContactItem,
 } from "@/lib/arternal";
 
+function toTimestamp(val: unknown): string | null {
+  if (!val || typeof val !== "string") return null;
+  return val;
+}
+
 export async function POST(request: NextRequest) {
   // Auth check
   const supabase = await createClient();
@@ -113,8 +118,8 @@ async function upsertArtworks(
         primary_image_url: item.primary_image_url,
         url: item.url,
         artist_ids: item.artists.map((a) => a.id),
-        arternal_created_at: item.created_at,
-        arternal_updated_at: item.updated_at,
+        arternal_created_at: toTimestamp(item.created_at),
+        arternal_updated_at: toTimestamp(item.updated_at),
         synced_at: new Date().toISOString(),
       },
       { onConflict: "id" }
@@ -188,8 +193,8 @@ async function upsertArtists(
         life_dates: item.life_dates,
         work_count: item.work_count,
         catalog_count: item.catalog_count,
-        arternal_created_at: item.created_at,
-        arternal_updated_at: item.updated_at,
+        arternal_created_at: toTimestamp(item.created_at),
+        arternal_updated_at: toTimestamp(item.updated_at),
         synced_at: new Date().toISOString(),
       },
       { onConflict: "id" }
@@ -258,8 +263,8 @@ async function upsertContacts(
         primary_zip: item.primary_address?.zip ?? null,
         primary_country: item.primary_country,
         primary_address_formatted: item.primary_address?.formatted ?? null,
-        arternal_created_at: item.created_at,
-        arternal_updated_at: item.updated_at,
+        arternal_created_at: toTimestamp(item.created_at),
+        arternal_updated_at: toTimestamp(item.updated_at),
         synced_at: new Date().toISOString(),
       },
       { onConflict: "id" }
