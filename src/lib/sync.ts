@@ -431,7 +431,7 @@ export async function syncContacts(opts?: SyncOptions): Promise<SyncResult> {
           const cutoff = new Date(updatedSince).getTime();
           // If timestamps are missing, can't determine cutoff — process all
           if (page.some((i) => !i.updated_at)) return true;
-          if (page.every((i) => new Date(i.updated_at).getTime() <= cutoff)) stopFetching = true;
+          if (page.every((i) => new Date(i.updated_at!).getTime() <= cutoff)) stopFetching = true;
           return !stopFetching;
         }
       : undefined,
@@ -462,12 +462,11 @@ export async function syncContacts(opts?: SyncOptions): Promise<SyncResult> {
           type: item.type,
           website: item.website,
           company: item.company,
-          primary_street: item.primary_address?.street ?? null,
+          primary_street: item.primary_street,
           primary_city: item.primary_city,
           primary_state: item.primary_state,
-          primary_zip: item.primary_address?.zip ?? null,
+          primary_zip: item.primary_zip,
           primary_country: item.primary_country,
-          primary_address_formatted: item.primary_address?.formatted ?? null,
           arternal_created_at: toTimestamp(item.created_at),
           arternal_updated_at: toTimestamp(item.updated_at),
           synced_at: new Date().toISOString(),

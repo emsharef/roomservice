@@ -170,23 +170,17 @@ export interface ContactItem {
   email: string | null;
   website: string | null;
   company: string | null;
+  primary_street: string | null;
   primary_city: string | null;
   primary_state: string | null;
+  primary_zip: string | null;
   primary_country: string | null;
   phone: string | null;
   phone_mobile: string | null;
   type: string | null;
   display_name: string;
-  created_at: string;
-  updated_at: string;
-  primary_address?: {
-    street: string | null;
-    city: string | null;
-    state: string | null;
-    zip: string | null;
-    country: string | null;
-    formatted: string | null;
-  };
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface ContactTransaction {
@@ -219,14 +213,6 @@ export interface ContactDetail {
   primary_zip: string | null;
   primary_country: string | null;
   display_name: string;
-  primary_address?: {
-    street: string | null;
-    city: string | null;
-    state: string | null;
-    zip: string | null;
-    country: string | null;
-    formatted: string | null;
-  };
   tags: string[];
   notes: string[];
   recent_transactions: ContactTransaction[];
