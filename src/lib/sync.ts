@@ -421,6 +421,16 @@ export async function syncContacts(opts?: SyncOptions): Promise<SyncResult> {
 
   onProgress?.({ phase: "fetching", processed: 0, total: 0, created: 0, updated: 0 });
 
+  // Check if the API returns timestamps — if not, skip incremental sync for contacts
+  if (isIncremental) {
+    const probe = await fetchContacts({ limit: "1" });
+    if (probe.data.length > 0 && !probe.data[0].updated_at) {
+      result.errors.push("Contacts API not returning timestamps — skipping incremental sync. Run a full sync or wait for Arternal to fix.");
+      onProgress?.({ phase: "done", processed: 0, total: 0, created: 0, updated: 0 });
+      return result;
+    }
+  }
+
   let stopFetching = false;
   const items = await fetchAllPages<ContactItem>(fetchContacts, {}, 100, {
     sort: "updated_at",
@@ -429,8 +439,6 @@ export async function syncContacts(opts?: SyncOptions): Promise<SyncResult> {
     onPage: isIncremental && updatedSince
       ? (page) => {
           const cutoff = new Date(updatedSince).getTime();
-          // If timestamps are missing, can't determine cutoff — process all
-          if (page.some((i) => !i.updated_at)) return true;
           if (page.every((i) => new Date(i.updated_at!).getTime() <= cutoff)) stopFetching = true;
           return !stopFetching;
         }
@@ -438,7 +446,7 @@ export async function syncContacts(opts?: SyncOptions): Promise<SyncResult> {
   });
 
   const itemsToProcess = isIncremental && updatedSince
-    ? items.filter((i) => !i.updated_at || new Date(i.updated_at).getTime() > new Date(updatedSince).getTime())
+    ? items.filter((i) => new Date(i.updated_at!).getTime() > new Date(updatedSince).getTime())
     : items;
 
   const { data: existingRows } = await supabase.from("contacts").select("id");
