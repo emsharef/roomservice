@@ -1,8 +1,19 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchContactLists, type ArternalContactList } from "@/lib/arternal";
 import BatchDashboard from "./BatchDashboard";
 
 export default async function BatchPage() {
   const admin = createAdminClient();
+
+  let contactLists: ArternalContactList[] = [];
+  try {
+    const listsResponse = await fetchContactLists({ limit: "100", sort: "name", order: "asc" });
+    contactLists = listsResponse.data.filter(
+      (list) => !list.live && list.name.toLowerCase() !== "selection cart",
+    );
+  } catch {
+    contactLists = [];
+  }
 
   const [
     totalResult,
@@ -63,6 +74,7 @@ export default async function BatchPage() {
         artists: artistsResult.count ?? 0,
         artistsEnriched: artistsEnrichedResult.count ?? 0,
       }}
+      contactLists={contactLists}
     />
   );
 }

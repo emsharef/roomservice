@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import type { ArternalContactList } from "@/lib/arternal";
 
 interface BatchStats {
   total: number;
@@ -32,13 +33,28 @@ interface BatchProgress {
 }
 
 type BatchMode = "incremental" | "full";
-type EnrichCategory = "collector";
+type EnrichSource = { kind: "collectors" } | { kind: "list"; listId: string; name: string };
 
-export default function BatchDashboard({ stats }: { stats: BatchStats }) {
+interface ListStats {
+  total: number;
+  enriched: number;
+  memberIds: string[];
+}
+
+export default function BatchDashboard({
+  stats,
+  contactLists,
+}: {
+  stats: BatchStats;
+  contactLists: ArternalContactList[];
+}) {
   const router = useRouter();
   const supabase = createClient();
   const [mode, setMode] = useState<BatchMode>("incremental");
-  const [enrichCategory, setEnrichCategory] = useState<EnrichCategory>("collector");
+  const [enrichSource, setEnrichSource] = useState<EnrichSource>({ kind: "collectors" });
+  const [listStatsCache, setListStatsCache] = useState<Record<string, ListStats>>({});
+  const [listStatsLoading, setListStatsLoading] = useState(false);
+  const [listStatsError, setListStatsError] = useState<string | null>(null);
   const [progress, setProgress] = useState<BatchProgress>({
     running: false,
     type: null,
@@ -67,6 +83,51 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
     }
     return all;
   }
+
+  async function getEnrichedSubset(allIds: string[]): Promise<Set<string>> {
+    const enriched = new Set<string>();
+    for (let i = 0; i < allIds.length; i += 500) {
+      const chunk = allIds.slice(i, i + 500);
+      const { data } = await supabase
+        .from("contacts_extended")
+        .select("contact_id")
+        .in("contact_id", chunk)
+        .not("collector_brief", "is", null);
+      for (const row of data ?? []) enriched.add(row.contact_id);
+    }
+    return enriched;
+  }
+
+  async function loadListStats(listId: string) {
+    setListStatsLoading(true);
+    setListStatsError(null);
+    try {
+      const res = await fetch(`/api/contact-lists/${listId}/contacts`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        setListStatsError(err.error || `HTTP ${res.status}`);
+        return;
+      }
+      const json = await res.json();
+      const memberIds: string[] = json.data ?? [];
+      const enriched = await getEnrichedSubset(memberIds);
+      setListStatsCache((prev) => ({
+        ...prev,
+        [listId]: { total: memberIds.length, enriched: enriched.size, memberIds },
+      }));
+    } catch (e) {
+      setListStatsError(String(e));
+    } finally {
+      setListStatsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (enrichSource.kind === "list" && !listStatsCache[enrichSource.listId]) {
+      loadListStats(enrichSource.listId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enrichSource]);
 
   async function runBatch(type: "embed" | "analyze") {
     pauseRef.current = false;
@@ -240,22 +301,38 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
   async function runEnrichBatch() {
     pauseRef.current = false;
 
-    // Fetch contacts matching the selected category
-    let query = supabase
-      .from("contacts_extended")
-      .select("contact_id")
-      .eq("classification", enrichCategory);
+    let contactIds: string[] = [];
 
-    if (mode === "incremental") {
-      query = query.is("collector_brief", null);
+    if (enrichSource.kind === "collectors") {
+      let query = supabase
+        .from("contacts_extended")
+        .select("contact_id")
+        .eq("classification", "collector");
+
+      if (mode === "incremental") {
+        query = query.is("collector_brief", null);
+      }
+
+      const { data: contacts } = await query.order("contact_id").limit(10000);
+      if (!contacts || contacts.length === 0) return;
+      contactIds = contacts.map((c) => c.contact_id);
+    } else {
+      let memberIds = listStatsCache[enrichSource.listId]?.memberIds;
+      if (!memberIds) {
+        await loadListStats(enrichSource.listId);
+        memberIds = listStatsCache[enrichSource.listId]?.memberIds;
+      }
+      if (!memberIds || memberIds.length === 0) return;
+
+      if (mode === "incremental") {
+        const enriched = await getEnrichedSubset(memberIds);
+        contactIds = memberIds.filter((id) => !enriched.has(id));
+      } else {
+        contactIds = memberIds;
+      }
     }
 
-    const { data: contacts } = await query.order("contact_id").limit(10000);
-
-    if (!contacts || contacts.length === 0) return;
-
-    // Fetch display names for progress display
-    const contactIds = contacts.map((c) => c.contact_id);
+    if (contactIds.length === 0) return;
     const { data: contactNames } = await supabase
       .from("contacts")
       .select("id, display_name")
@@ -269,16 +346,16 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
       running: true,
       type: "enrich",
       current: 0,
-      total: contacts.length,
+      total: contactIds.length,
       currentItem: "",
       startedAt: new Date(),
       errors: [],
     });
 
-    for (let i = 0; i < contacts.length; i++) {
+    for (let i = 0; i < contactIds.length; i++) {
       if (pauseRef.current) break;
 
-      const contactId = contacts[i].contact_id;
+      const contactId = contactIds[i];
       const name = nameMap.get(contactId) || `Contact ${contactId}`;
 
       setProgress((prev) => ({
@@ -319,6 +396,9 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
     }
 
     setProgress((prev) => ({ ...prev, running: false }));
+    if (enrichSource.kind === "list") {
+      await loadListStats(enrichSource.listId);
+    }
     router.refresh();
   }
 
@@ -530,8 +610,19 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
 
   const embedRemaining = stats.withImages - stats.embedded;
   const analyzeRemaining = stats.withImages - stats.analyzed;
-  const enrichRemaining = stats.collectors - stats.collectorsEnriched;
   const artistEnrichRemaining = stats.artists - stats.artistsEnriched;
+
+  const sourceTotal =
+    enrichSource.kind === "collectors"
+      ? stats.collectors
+      : (listStatsCache[enrichSource.listId]?.total ?? 0);
+  const sourceEnriched =
+    enrichSource.kind === "collectors"
+      ? stats.collectorsEnriched
+      : (listStatsCache[enrichSource.listId]?.enriched ?? 0);
+  const enrichRemaining = sourceTotal - sourceEnriched;
+  const sourceStatsKnown =
+    enrichSource.kind === "collectors" || listStatsCache[enrichSource.listId] !== undefined;
 
   const progressLabel =
     progress.type === "embed"
@@ -664,48 +755,81 @@ export default function BatchDashboard({ stats }: { stats: BatchStats }) {
           <h3 className="text-lg font-semibold text-gray-900">Contact Enrichment</h3>
           <div className="mt-3 space-y-1">
             <p className="text-sm text-gray-600">
-              <span className="text-2xl font-bold text-gray-900">
-                {stats.collectorsEnriched.toLocaleString()}
-              </span>{" "}
-              of {stats.collectors.toLocaleString()} complete
+              {sourceStatsKnown ? (
+                <>
+                  <span className="text-2xl font-bold text-gray-900">
+                    {sourceEnriched.toLocaleString()}
+                  </span>{" "}
+                  of {sourceTotal.toLocaleString()} complete
+                </>
+              ) : (
+                <span className="text-gray-400">
+                  {listStatsLoading ? "Loading list…" : "—"}
+                </span>
+              )}
             </p>
             <p className="text-sm text-gray-500">
-              {enrichRemaining.toLocaleString()} remaining
+              {sourceStatsKnown ? `${enrichRemaining.toLocaleString()} remaining` : ""}
             </p>
           </div>
           <div className="mt-3">
             <div className="h-2.5 w-full rounded-full bg-gray-200">
               <div
                 className="h-2.5 rounded-full bg-emerald-600 transition-all duration-300"
-                style={{ width: `${getPercentage(stats.collectorsEnriched, stats.collectors)}%` }}
+                style={{ width: `${getPercentage(sourceEnriched, sourceTotal)}%` }}
               />
             </div>
             <p className="mt-1 text-xs text-gray-400">
-              {getPercentage(stats.collectorsEnriched, stats.collectors)}%
+              {getPercentage(sourceEnriched, sourceTotal)}%
             </p>
           </div>
-          {/* Category Toggle */}
+          {/* Source selector */}
           <div className="mt-3">
-            <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Category
+            <label htmlFor="enrich-source" className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Source
             </label>
-            <div className="mt-1 inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
-              <button
-                onClick={() => setEnrichCategory("collector")}
-                disabled={progress.running}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                  enrichCategory === "collector"
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                } disabled:cursor-not-allowed disabled:opacity-50`}
-              >
+            <select
+              id="enrich-source"
+              value={enrichSource.kind === "collectors" ? "__collectors__" : enrichSource.listId}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__collectors__") {
+                  setEnrichSource({ kind: "collectors" });
+                  setListStatsError(null);
+                } else {
+                  const list = contactLists.find((l) => l.id === v);
+                  if (list) setEnrichSource({ kind: "list", listId: list.id, name: list.name });
+                }
+              }}
+              disabled={progress.running}
+              className="mt-1 block w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="__collectors__">
                 Collectors ({stats.collectors})
-              </button>
-            </div>
+              </option>
+              {contactLists.length > 0 && (
+                <optgroup label="Contact lists">
+                  {contactLists.map((list) => (
+                    <option key={list.id} value={list.id}>
+                      {list.name}
+                      {list.contact_count >= 0 ? ` (${list.contact_count})` : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            {listStatsError && (
+              <p className="mt-1 text-xs text-red-600">{listStatsError}</p>
+            )}
           </div>
           <button
             onClick={runEnrichBatch}
-            disabled={progress.running || (mode === "incremental" && enrichRemaining === 0)}
+            disabled={
+              progress.running ||
+              listStatsLoading ||
+              !sourceStatsKnown ||
+              (mode === "incremental" && enrichRemaining === 0)
+            }
             className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {mode === "full" ? "Re-enrich All" : "Start Enrichment"}
