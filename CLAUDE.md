@@ -34,6 +34,8 @@ src/
     vision.ts                # Claude Vision artwork analysis
     embeddings.ts            # Voyage AI multimodal embedding service
     search.ts                # Hybrid keyword + semantic search with pagination
+    contacts.ts              # Shared contact update + Arternal write-back logic
+    chat-tools.ts            # Tool definitions + executors shared by /api/chat and /api/mcp
     supabase/
       client.ts              # Browser Supabase client
       server.ts              # Server Supabase client (cookie-based auth)
@@ -51,9 +53,14 @@ src/
       ArtistsList.tsx         # List component
       [id]/page.tsx          # Artist detail: bio, statistics, works
     contacts/
-      page.tsx               # Contacts list
-      ContactsList.tsx        # List component
-      [id]/page.tsx          # Contact detail: info, tags, transactions, activities, notes
+      page.tsx               # Contacts list (loads contact lists for filter dropdown + batch mode)
+      ContactsList.tsx        # List component with batch select, list filter, create/delete list controls
+      [id]/page.tsx          # Contact detail (loads contact lists for "Add to list")
+      [id]/ContactEditor.tsx  # Page-level edit toggle, tags/roles add UI, "Add to list" popover
+    chat/
+      page.tsx               # Chat page (server)
+      layout.tsx             # Chat layout
+      ChatPage.tsx           # Streaming chat UI; calls /api/chat with tool_use loop
     search/page.tsx          # Discover page: hybrid keyword + semantic search with "Show more"
     admin/
       layout.tsx             # Admin layout with sub-nav
@@ -61,7 +68,8 @@ src/
       sync/
         page.tsx             # Sync page (server: fetches counts + logs)
         SyncDashboard.tsx    # Sync UI: mode toggle, trigger buttons, SSE progress, log table
-      batch/page.tsx         # Batch processing UI (vision analysis, embeddings)
+      batch/page.tsx         # Batch processing UI (vision/embeddings + contact enrichment by Collectors or any contact list)
+      batch/BatchDashboard.tsx
       users/
         page.tsx             # User management page
         UserManagement.tsx   # Invite users, manage roles
@@ -80,6 +88,12 @@ src/
       analyze/route.ts       # Claude Vision analysis endpoint
       embed/route.ts         # CLIP embedding endpoint
       search/route.ts        # Search API
+      chat/route.ts          # Streaming chat completion with tool use (claude-sonnet-4-6)
+      mcp/route.ts           # MCP server endpoint exposing the same tools as /api/chat
+      contacts/[id]/route.ts # PUT contact: validate, write to Arternal, refetch + sync to Supabase
+      contact-lists/route.ts # GET (lists, filtered) / POST (create, auth-gated)
+      contact-lists/[listId]/route.ts          # DELETE (auth-gated)
+      contact-lists/[listId]/contacts/route.ts # GET members / POST add / DELETE remove
       admin/users/route.ts   # User CRUD (GET list, PUT role, DELETE user)
       admin/users/invite/route.ts  # User invitation via email
       trigger/sync/route.ts  # Manual trigger for background sync/analysis (Trigger.dev)
@@ -138,6 +152,29 @@ scripts/
 - **hybridSearchArtworks()** — Runs keyword + semantic in parallel via Promise.allSettled, deduplicates results. Returns { keywordResults, semanticResults, keywordTotal }
 - Text queries use description_embedding space; image queries and "more like this" use clip_embedding
 - The Discover page (/search) shows "Exact Matches" (keyword) above "Similar Artworks" (semantic) with "Show more" pagination for both
+
+## Chat & MCP (`src/lib/chat-tools.ts`)
+
+`src/lib/chat-tools.ts` defines the canonical `CHAT_TOOLS` array and `executeTool(name, input)` switchboard. Both `/api/chat` (streaming Anthropic chat with tool use) and `/api/mcp` (MCP server endpoint) reuse the same definitions, so adding a tool to chat automatically exposes it via MCP.
+
+Currently exposed tools (15):
+- **Search/lookup:** `search_artworks`, `search_contacts`, `search_artists`, `search_prospects`, `get_record`, `get_prospect`, `get_stats`
+- **Discovery:** `find_matches` (artworks ↔ contact taste), `find_similar_artworks` (embedding-based "more like this")
+- **Contact lists:** `list_contact_lists`, `create_contact_list`, `delete_contact_list`, `add_contacts_to_list`, `remove_contacts_from_list`
+- **Mutations:** `update_contact` (writes to Arternal via `lib/contacts.ts`, then refetches detail and syncs to Supabase)
+
+Destructive tools (`delete_contact_list`, `remove_contacts_from_list`) carry explicit instructions in their tool descriptions to confirm with the user before invoking.
+
+## Contact Lists
+
+Lists come from Arternal — we do NOT mirror list membership in Supabase. The `/contacts` UI calls `/api/contact-lists` to populate the list filter dropdown; the list filter passes the list's member IDs to `search_contacts` RPC via `filter_contact_ids`.
+
+UI surfaces:
+- `/contacts`: list filter dropdown, Create/Delete buttons (admin/staff), batch select mode → bulk add/remove
+- `/contacts/[id]`: "Add to list" popover in the editor header
+- `/admin/batch`: Contact Enrichment card has a **Source** dropdown — Collectors (the existing `contacts_extended.classification = 'collector'` set) or any contact list. When a list is selected the card fetches its members, counts how many already have `collector_brief`, and uses those for the progress bar + incremental filter.
+
+Server filtering: `/api/contact-lists` excludes `live` lists and the "selection cart" list (Arternal returns these from the same endpoint but they aren't usable as static lists).
 
 ## Interactive Table Headers
 
