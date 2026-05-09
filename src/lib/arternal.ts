@@ -303,6 +303,39 @@ export function fetchContactListMembers(listId: string, params?: Record<string, 
   return arternaFetch<ArternalContactListMembersResponse>(`/contact-lists/${listId}/contacts`, params);
 }
 
+export interface CreateContactListRequest {
+  name: string;
+  description?: string;
+}
+
+export async function createContactList(data: CreateContactListRequest): Promise<{ id: string }> {
+  const res = await fetch(`${API_BASE}/contact-lists`, {
+    method: "POST",
+    headers: {
+      "X-API-Key": API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Arternal API error ${res.status}: ${text}`);
+  }
+  const body = await res.json();
+  return body.data ?? body;
+}
+
+export async function deleteContactList(listId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/contact-lists/${listId}`, {
+    method: "DELETE",
+    headers: { "X-API-Key": API_KEY },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Arternal API error ${res.status}: ${text}`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Write functions
 // ---------------------------------------------------------------------------

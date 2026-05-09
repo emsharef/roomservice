@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { ColumnHeader, ActiveFilters, Pagination } from "@/components/TableControls";
 
 interface ContactItem {
@@ -109,6 +109,62 @@ export default function ContactsList({
     router.push("/contacts");
   }
 
+  // List management state
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newListName, setNewListName] = useState("");
+  const [newListDescription, setNewListDescription] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [listMutating, setListMutating] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+
+  async function handleCreateList() {
+    const name = newListName.trim();
+    if (!name) return;
+    setListMutating(true);
+    setListError(null);
+    try {
+      const res = await fetch("/api/contact-lists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description: newListDescription.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setListError(data.error || `HTTP ${res.status}`);
+        return;
+      }
+      setShowCreateForm(false);
+      setNewListName("");
+      setNewListDescription("");
+      router.refresh();
+    } catch (e) {
+      setListError(String(e));
+    } finally {
+      setListMutating(false);
+    }
+  }
+
+  async function handleDeleteList() {
+    if (!activeListId) return;
+    setListMutating(true);
+    setListError(null);
+    try {
+      const res = await fetch(`/api/contact-lists/${activeListId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setListError(data.error || `HTTP ${res.status}`);
+        return;
+      }
+      setShowDeleteConfirm(false);
+      // Clear the filter since the list no longer exists
+      updateParams({ filter_list: "" });
+    } catch (e) {
+      setListError(String(e));
+    } finally {
+      setListMutating(false);
+    }
+  }
+
   const activeListName = activeListId
     ? contactLists?.find((l) => l.id === activeListId)?.name ?? activeListId
     : null;
@@ -137,26 +193,117 @@ export default function ContactsList({
         </div>
       )}
 
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <p className="text-sm text-gray-500">
           {totalCount.toLocaleString()} contacts{activeListName ? ` in "${activeListName}"` : " total"}
           {totalPages > 1 && ` \u00b7 Page ${currentPage} of ${totalPages}`}
         </p>
-        {contactLists && contactLists.length > 0 && (
-          <select
-            value={activeListId ?? ""}
-            onChange={(e) => handleListFilter(e.target.value)}
-            className="text-sm border border-gray-300 rounded-md px-2 py-1 text-gray-700 bg-white"
+        <div className="flex items-center gap-2">
+          {contactLists && contactLists.length > 0 && (
+            <select
+              value={activeListId ?? ""}
+              onChange={(e) => handleListFilter(e.target.value)}
+              className="text-sm border border-gray-300 rounded-md px-2 py-1 text-gray-700 bg-white"
+            >
+              <option value="">All contacts</option>
+              {contactLists.map((list) => (
+                <option key={list.id} value={list.id}>
+                  {list.name} ({list.contact_count})
+                </option>
+              ))}
+            </select>
+          )}
+          {activeListId && (
+            <button
+              onClick={() => { setShowDeleteConfirm(true); setListError(null); }}
+              className="inline-flex items-center gap-1 text-sm border border-red-300 text-red-700 rounded-md px-2 py-1 hover:bg-red-50"
+            >
+              Delete list
+            </button>
+          )}
+          <button
+            onClick={() => { setShowCreateForm(true); setListError(null); }}
+            className="inline-flex items-center gap-1 text-sm border border-gray-300 text-gray-700 rounded-md px-2 py-1 hover:bg-gray-50 bg-white"
           >
-            <option value="">All contacts</option>
-            {contactLists.map((list) => (
-              <option key={list.id} value={list.id}>
-                {list.name} ({list.contact_count})
-              </option>
-            ))}
-          </select>
-        )}
+            + New list
+          </button>
+        </div>
       </div>
+
+      {showCreateForm && (
+        <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-medium text-gray-900 mb-3">New contact list</h3>
+          {listError && (
+            <p className="mb-3 rounded bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{listError}</p>
+          )}
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Name</label>
+              <input
+                type="text"
+                value={newListName}
+                onChange={(e) => setNewListName(e.target.value)}
+                maxLength={255}
+                placeholder="e.g. VIP Collectors"
+                autoFocus
+                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Description (optional)</label>
+              <input
+                type="text"
+                value={newListDescription}
+                onChange={(e) => setNewListDescription(e.target.value)}
+                maxLength={1000}
+                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCreateList}
+                disabled={listMutating || newListName.trim() === ""}
+                className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {listMutating ? "Creating\u2026" : "Create"}
+              </button>
+              <button
+                onClick={() => { setShowCreateForm(false); setNewListName(""); setNewListDescription(""); setListError(null); }}
+                disabled={listMutating}
+                className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteConfirm && activeListName && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
+          <h3 className="text-sm font-medium text-red-900 mb-1">Delete &ldquo;{activeListName}&rdquo;?</h3>
+          <p className="text-sm text-red-800 mb-3">The list will be removed in Arternal. Contacts in the list will not be deleted.</p>
+          {listError && (
+            <p className="mb-3 rounded bg-white border border-red-200 px-3 py-2 text-xs text-red-700">{listError}</p>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDeleteList}
+              disabled={listMutating}
+              className="inline-flex items-center rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              {listMutating ? "Deleting\u2026" : "Delete"}
+            </button>
+            <button
+              onClick={() => { setShowDeleteConfirm(false); setListError(null); }}
+              disabled={listMutating}
+              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
         <table className="min-w-full divide-y divide-gray-200">
