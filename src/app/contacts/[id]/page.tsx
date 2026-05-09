@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import ContactEditor from "./ContactEditor";
 
 export default async function ContactDetailPage({
   params,
@@ -45,32 +46,30 @@ export default async function ContactDetailPage({
     );
   }
 
-  const details = [
-    { label: "ID", value: String(contact.id) },
-    { label: "First Name", value: contact.first_name },
-    { label: "Last Name", value: contact.last_name },
-    { label: "Display Name", value: contact.display_name },
-    { label: "Email", value: contact.email, isEmail: true },
-    { label: "Phone", value: contact.phone },
-    { label: "Phone (Mobile)", value: contact.phone_mobile },
-    { label: "Type", value: contact.type },
-    { label: "Website", value: contact.website, isLink: true },
-    { label: "Company", value: contact.company },
-  ];
-
-  const addressDetails = [
-    { label: "Street", value: contact.primary_street },
-    { label: "City", value: contact.primary_city },
-    { label: "State", value: contact.primary_state },
-    { label: "ZIP", value: contact.primary_zip },
-    { label: "Country", value: contact.primary_country },
-    { label: "Formatted Address", value: contact.primary_address_formatted, wide: true },
-  ];
-
-  const tags: string[] = contact.tags ?? [];
   const notes: string[] = contact.notes ?? [];
   const recentTransactions: { id: string; title: string; status: string; total_price: string; created_at: string }[] = contact.recent_transactions ?? [];
   const recentActivities: { type: string; text: string | null; created_at: string }[] = contact.recent_activities ?? [];
+
+  const editorData = {
+    id: contact.id,
+    first_name: contact.first_name,
+    last_name: contact.last_name,
+    display_name: contact.display_name,
+    email: contact.email,
+    phone: contact.phone,
+    phone_mobile: contact.phone_mobile,
+    type: contact.type,
+    website: contact.website,
+    company: contact.company,
+    primary_street: contact.primary_street,
+    primary_city: contact.primary_city,
+    primary_state: contact.primary_state,
+    primary_zip: contact.primary_zip,
+    primary_country: contact.primary_country,
+    primary_address_formatted: contact.primary_address_formatted,
+    tags: contact.tags ?? [],
+    roles: contact.roles ?? [],
+  };
 
   return (
     <div>
@@ -84,81 +83,7 @@ export default async function ContactDetailPage({
         Back to contacts
       </Link>
 
-      <h1 className="text-2xl font-semibold text-gray-900 mb-6">{contact.display_name}</h1>
-
-      {/* Contact Details */}
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mb-6">
-        <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">
-          Contact Information
-        </h2>
-        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-          {details.map((d) => (
-            <div key={d.label}>
-              <dt className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                {d.label}
-              </dt>
-              <dd className="mt-1 text-sm text-gray-900">
-                {d.isEmail && d.value ? (
-                  <a href={`mailto:${d.value}`} className="hover:underline text-blue-600">
-                    {d.value}
-                  </a>
-                ) : d.isLink && d.value ? (
-                  <a
-                    href={d.value.startsWith("http") ? d.value : `https://${d.value}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:underline text-blue-600"
-                  >
-                    {d.value}
-                  </a>
-                ) : (
-                  d.value || <span className="text-gray-400 italic">{"\u2014"}</span>
-                )}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-
-      {/* Address */}
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mb-6">
-        <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">
-          Primary Address
-        </h2>
-        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-          {addressDetails.map((d) => (
-            <div key={d.label} className={d.wide ? "sm:col-span-2" : ""}>
-              <dt className="text-xs font-medium text-gray-500 uppercase tracking-wider">
-                {d.label}
-              </dt>
-              <dd className="mt-1 text-sm text-gray-900">
-                {d.value || <span className="text-gray-400 italic">{"\u2014"}</span>}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-
-      {/* Tags */}
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mb-6">
-        <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">
-          Tags
-        </h2>
-        {tags.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {tags.map((tag) => (
-              <span
-                key={tag}
-                className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-700"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-gray-400 italic">{"\u2014"}</p>
-        )}
-      </div>
+      <ContactEditor contact={editorData} />
 
       {/* Recent Transactions */}
       {recentTransactions.length > 0 && (

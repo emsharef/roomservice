@@ -242,9 +242,15 @@ async function upsertContacts(
 
   let created = 0;
   let updated = 0;
+  let skipped = 0;
   const errors: string[] = [];
 
   for (const item of items) {
+    // Skip archived contacts — Arternal returns them with empty display_name
+    if ((item.display_name ?? "").trim() === "") {
+      skipped++;
+      continue;
+    }
     const { error } = await admin.from("contacts").upsert(
       {
         id: item.id,
@@ -287,9 +293,10 @@ async function upsertContacts(
   }
 
   return NextResponse.json({
-    processed: items.length,
+    processed: items.length - skipped,
     created,
     updated,
+    skipped,
     total: parseInt(pagination.total, 10),
     hasMore: pagination.has_more,
     nextOffset: offset + limit,

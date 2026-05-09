@@ -445,9 +445,12 @@ export async function syncContacts(opts?: SyncOptions): Promise<SyncResult> {
       : undefined,
   });
 
+  // Skip archived contacts — Arternal returns them with empty display_name and other fields
+  const itemsAfterArchiveFilter = items.filter((i) => (i.display_name ?? "").trim() !== "");
+
   const itemsToProcess = isIncremental && updatedSince
-    ? items.filter((i) => new Date(i.updated_at!).getTime() > new Date(updatedSince).getTime())
-    : items;
+    ? itemsAfterArchiveFilter.filter((i) => new Date(i.updated_at!).getTime() > new Date(updatedSince).getTime())
+    : itemsAfterArchiveFilter;
 
   const { data: existingRows } = await supabase.from("contacts").select("id");
   const existingIds = new Set((existingRows ?? []).map((r: { id: string }) => r.id));

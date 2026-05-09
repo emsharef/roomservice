@@ -325,9 +325,28 @@ export async function updateArtist(
   }
 }
 
+export interface ContactUpdateRequest {
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  company?: string | null;
+  primary_street?: string | null;
+  primary_city?: string | null;
+  primary_state?: string | null;
+  primary_zip?: string | null;
+  primary_country?: string | null;
+  type?: "person" | "institution" | "venue" | null;
+  /** Additive: tags listed here are added; existing tags are preserved. */
+  tags?: string[];
+  /** Additive: roles listed here are added; existing roles are preserved. */
+  roles?: string[];
+}
+
 export async function updateContact(
   id: string,
-  data: Partial<ContactItem>,
+  data: ContactUpdateRequest,
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/contacts/${id}`, {
     method: "PUT",
