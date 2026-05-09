@@ -193,17 +193,17 @@ export default function ContactsList({
         </div>
       )}
 
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-gray-500">
           {totalCount.toLocaleString()} contacts{activeListName ? ` in "${activeListName}"` : " total"}
           {totalPages > 1 && ` \u00b7 Page ${currentPage} of ${totalPages}`}
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {contactLists && contactLists.length > 0 && (
             <select
               value={activeListId ?? ""}
               onChange={(e) => handleListFilter(e.target.value)}
-              className="text-sm border border-gray-300 rounded-md px-2 py-1 text-gray-700 bg-white"
+              className="text-sm border border-gray-300 rounded-md px-2 py-1 text-gray-700 bg-white min-w-0 max-w-[60vw] sm:max-w-none"
             >
               <option value="">All contacts</option>
               {contactLists.map((list) => (
@@ -216,14 +216,14 @@ export default function ContactsList({
           {activeListId && (
             <button
               onClick={() => { setShowDeleteConfirm(true); setListError(null); }}
-              className="inline-flex items-center gap-1 text-sm border border-red-300 text-red-700 rounded-md px-2 py-1 hover:bg-red-50"
+              className="inline-flex items-center gap-1 text-sm border border-red-300 text-red-700 rounded-md px-2 py-1 hover:bg-red-50 whitespace-nowrap"
             >
               Delete list
             </button>
           )}
           <button
             onClick={() => { setShowCreateForm(true); setListError(null); }}
-            className="inline-flex items-center gap-1 text-sm border border-gray-300 text-gray-700 rounded-md px-2 py-1 hover:bg-gray-50 bg-white"
+            className="inline-flex items-center gap-1 text-sm border border-gray-300 text-gray-700 rounded-md px-2 py-1 hover:bg-gray-50 bg-white whitespace-nowrap"
           >
             + New list
           </button>
