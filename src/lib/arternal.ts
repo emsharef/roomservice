@@ -215,6 +215,7 @@ export interface ContactDetail {
   display_name: string;
   tags: string[];
   notes: string[];
+  roles: string[];
   recent_transactions: ContactTransaction[];
   recent_activities: ContactActivity[];
 }

@@ -102,7 +102,7 @@ scripts/
 
 **artists** — id (PK), first_name, last_name, alias, display_name, birth_year, death_year, bio, country, life_dates, work_count, catalog_count, saved, statistics (jsonb, from detail endpoint), arternal_created_at, arternal_updated_at, synced_at, detail_synced_at
 
-**contacts** — id (PK), first_name, last_name, display_name, email, phone, phone_mobile, type, website, company, primary_street, primary_city, primary_state, primary_zip, primary_country, primary_address_formatted, tags (text[]), notes (text[]), recent_transactions (jsonb), recent_activities (jsonb), arternal_created_at, arternal_updated_at, synced_at, detail_synced_at
+**contacts** — id (PK), first_name, last_name, display_name, email, phone, phone_mobile, type, website, company, primary_street, primary_city, primary_state, primary_zip, primary_country, primary_address_formatted, tags (text[]), notes (text[]), roles (text[]), recent_transactions (jsonb), recent_activities (jsonb), arternal_created_at, arternal_updated_at, synced_at, detail_synced_at
 
 **artwork_artists** — artwork_id, artist_id, display_name (junction table)
 

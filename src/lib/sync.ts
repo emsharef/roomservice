@@ -540,6 +540,7 @@ export async function syncContacts(opts?: SyncOptions): Promise<SyncResult> {
         .update({
           tags: detail.tags ?? [],
           notes: detail.notes ?? [],
+          roles: detail.roles ?? [],
           recent_transactions: detail.recent_transactions ?? [],
           recent_activities: detail.recent_activities ?? [],
           detail_synced_at: new Date().toISOString(),
