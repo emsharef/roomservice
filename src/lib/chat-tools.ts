@@ -1,5 +1,14 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { fetchContactLists, fetchContactListMembers, fetchAllPages, type ContactUpdateRequest } from "@/lib/arternal";
+import {
+  fetchContactLists,
+  fetchContactListMembers,
+  fetchAllPages,
+  createContactList,
+  deleteContactList,
+  addContactsToList,
+  removeContactsFromList,
+  type ContactUpdateRequest,
+} from "@/lib/arternal";
 import { updateContactAndSync } from "@/lib/contacts";
 
 // ---------------------------------------------------------------------------
@@ -188,6 +197,65 @@ export const CHAT_TOOLS = [
       required: ["id"],
     },
   },
+  {
+    name: "create_contact_list",
+    description:
+      "Create a new contact list in Arternal. This is a real write to the CRM. Only call after the user has asked for it.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "List name (required, max 255 chars)" },
+        description: { type: "string", description: "Optional description, max 1000 chars" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "delete_contact_list",
+    description:
+      "Delete a contact list in Arternal (soft delete). The contacts on the list are NOT deleted, only the list itself. This is destructive — confirm with the user first by name before calling.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        list_id: { type: "string", description: "Contact list ID (required). Use list_contact_lists first to find it." },
+      },
+      required: ["list_id"],
+    },
+  },
+  {
+    name: "add_contacts_to_list",
+    description:
+      "Add one or more contacts to a contact list. Idempotent — adding a contact that's already on the list is a no-op. Use list_contact_lists to find the list ID and search_contacts to find contact IDs.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        list_id: { type: "string", description: "Contact list ID (required)" },
+        contact_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array of contact IDs to add (required, at least 1)",
+        },
+      },
+      required: ["list_id", "contact_ids"],
+    },
+  },
+  {
+    name: "remove_contacts_from_list",
+    description:
+      "Remove one or more contacts from a contact list. The contacts themselves remain in the CRM, only their membership in this list is removed. Use list_contact_lists to find the list ID and search_contacts (with list_id filter) to find member IDs.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        list_id: { type: "string", description: "Contact list ID (required)" },
+        contact_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array of contact IDs to remove (required, at least 1)",
+        },
+      },
+      required: ["list_id", "contact_ids"],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -223,6 +291,14 @@ export async function executeTool(
       return executeListContactLists(input);
     case "update_contact":
       return executeUpdateContact(admin, input);
+    case "create_contact_list":
+      return executeCreateContactList(input);
+    case "delete_contact_list":
+      return executeDeleteContactList(input);
+    case "add_contacts_to_list":
+      return executeAddContactsToList(input);
+    case "remove_contacts_from_list":
+      return executeRemoveContactsFromList(input);
     default:
       return { result: { error: `Unknown tool: ${name}` }, summary: `Unknown tool: ${name}` };
   }
@@ -1164,4 +1240,100 @@ async function executeUpdateContact(
     result: { success: true, contact: contact ? { ...contact, link: `/contacts/${id}` } : null },
     summary: `Updated contact: ${contact?.display_name ?? id}`,
   };
+}
+
+async function executeCreateContactList(
+  input: Record<string, unknown>,
+): Promise<{ result: unknown; summary: string }> {
+  const name = typeof input.name === "string" ? input.name.trim() : "";
+  if (!name) {
+    return { result: { error: "name is required" }, summary: "Missing list name" };
+  }
+  if (name.length > 255) {
+    return { result: { error: "name exceeds max length of 255" }, summary: "Name too long" };
+  }
+  const description = typeof input.description === "string" ? input.description : undefined;
+  if (description && description.length > 1000) {
+    return { result: { error: "description exceeds max length of 1000" }, summary: "Description too long" };
+  }
+
+  try {
+    const created = await createContactList({ name, description });
+    return {
+      result: { success: true, id: created.id, name },
+      summary: `Created list "${name}" (${created.id})`,
+    };
+  } catch (e) {
+    return { result: { error: String(e) }, summary: `Failed to create list: ${e}` };
+  }
+}
+
+async function executeDeleteContactList(
+  input: Record<string, unknown>,
+): Promise<{ result: unknown; summary: string }> {
+  const listId = typeof input.list_id === "string" ? input.list_id : null;
+  if (!listId) {
+    return { result: { error: "list_id is required" }, summary: "Missing list_id" };
+  }
+
+  try {
+    await deleteContactList(listId);
+    return { result: { success: true }, summary: `Deleted list ${listId}` };
+  } catch (e) {
+    return { result: { error: String(e) }, summary: `Failed to delete list: ${e}` };
+  }
+}
+
+function parseContactIdsInput(input: Record<string, unknown>): string[] | string {
+  const raw = input.contact_ids;
+  if (!Array.isArray(raw) || raw.length === 0 || !raw.every((id) => typeof id === "string")) {
+    return "contact_ids must be a non-empty array of strings";
+  }
+  return raw as string[];
+}
+
+async function executeAddContactsToList(
+  input: Record<string, unknown>,
+): Promise<{ result: unknown; summary: string }> {
+  const listId = typeof input.list_id === "string" ? input.list_id : null;
+  if (!listId) {
+    return { result: { error: "list_id is required" }, summary: "Missing list_id" };
+  }
+  const ids = parseContactIdsInput(input);
+  if (typeof ids === "string") {
+    return { result: { error: ids }, summary: ids };
+  }
+
+  try {
+    await addContactsToList(listId, ids);
+    return {
+      result: { success: true, count: ids.length },
+      summary: `Added ${ids.length} contact${ids.length === 1 ? "" : "s"} to list ${listId}`,
+    };
+  } catch (e) {
+    return { result: { error: String(e) }, summary: `Failed to add to list: ${e}` };
+  }
+}
+
+async function executeRemoveContactsFromList(
+  input: Record<string, unknown>,
+): Promise<{ result: unknown; summary: string }> {
+  const listId = typeof input.list_id === "string" ? input.list_id : null;
+  if (!listId) {
+    return { result: { error: "list_id is required" }, summary: "Missing list_id" };
+  }
+  const ids = parseContactIdsInput(input);
+  if (typeof ids === "string") {
+    return { result: { error: ids }, summary: ids };
+  }
+
+  try {
+    await removeContactsFromList(listId, ids);
+    return {
+      result: { success: true, count: ids.length },
+      summary: `Removed ${ids.length} contact${ids.length === 1 ? "" : "s"} from list ${listId}`,
+    };
+  } catch (e) {
+    return { result: { error: String(e) }, summary: `Failed to remove from list: ${e}` };
+  }
 }
