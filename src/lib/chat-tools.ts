@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { fetchContactLists, fetchContactListMembers, fetchAllPages } from "@/lib/arternal";
+import { fetchContactLists, fetchContactListMembers, fetchAllPages, type ContactUpdateRequest } from "@/lib/arternal";
+import { updateContactAndSync } from "@/lib/contacts";
 
 // ---------------------------------------------------------------------------
 // Tool definitions (Claude tool_use format)
@@ -161,6 +162,32 @@ export const CHAT_TOOLS = [
       required: [],
     },
   },
+  {
+    name: "update_contact",
+    description:
+      "Update a contact in Arternal. This is a real write to the CRM — only use after the user has explicitly asked you to make a change. Tags and roles are additive: anything passed is added to the existing list and cannot be removed via this tool. To clear a regular field, pass an empty string. Only include fields you want to change.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string", description: "Contact ID (required)" },
+        first_name: { type: "string", description: "Max 100 chars" },
+        last_name: { type: "string", description: "Max 100 chars" },
+        email: { type: "string", description: "Valid email or empty string to clear" },
+        phone: { type: "string", description: "Max 50 chars" },
+        website: { type: "string", description: "Valid URL" },
+        company: { type: "string", description: "Max 255 chars" },
+        type: { type: "string", enum: ["person", "institution", "venue"], description: "Contact type" },
+        primary_street: { type: "string", description: "Max 255 chars" },
+        primary_city: { type: "string", description: "Max 100 chars" },
+        primary_state: { type: "string", description: "Max 100 chars" },
+        primary_zip: { type: "string", description: "Max 20 chars" },
+        primary_country: { type: "string", description: "Max 100 chars" },
+        tags: { type: "array", items: { type: "string" }, description: "Tags to add (additive — existing tags preserved, cannot remove)" },
+        roles: { type: "array", items: { type: "string" }, description: "Roles to add (additive — existing roles preserved, cannot remove)" },
+      },
+      required: ["id"],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -194,6 +221,8 @@ export async function executeTool(
       return executeGetProspect(admin, input);
     case "list_contact_lists":
       return executeListContactLists(input);
+    case "update_contact":
+      return executeUpdateContact(admin, input);
     default:
       return { result: { error: `Unknown tool: ${name}` }, summary: `Unknown tool: ${name}` };
   }
@@ -1083,4 +1112,56 @@ async function executeListContactLists(
   } catch (e) {
     return { result: { error: `Failed to fetch contact lists: ${e}` }, summary: "Failed to fetch contact lists" };
   }
+}
+
+async function executeUpdateContact(
+  admin: SupabaseAdmin,
+  input: Record<string, unknown>,
+): Promise<{ result: unknown; summary: string }> {
+  const id = typeof input.id === "string" ? input.id : null;
+  if (!id) {
+    return { result: { error: "id is required" }, summary: "Missing contact id" };
+  }
+
+  // Build the update payload from the input, only including fields that were passed.
+  const allowed: (keyof ContactUpdateRequest)[] = [
+    "first_name",
+    "last_name",
+    "email",
+    "phone",
+    "website",
+    "company",
+    "type",
+    "primary_street",
+    "primary_city",
+    "primary_state",
+    "primary_zip",
+    "primary_country",
+    "tags",
+    "roles",
+  ];
+  const payload: ContactUpdateRequest = {};
+  for (const key of allowed) {
+    if (key in input) {
+      // Type narrowing for the union type
+      (payload as Record<string, unknown>)[key] = input[key];
+    }
+  }
+
+  const result = await updateContactAndSync(id, payload);
+  if (!result.ok) {
+    return { result: { error: result.error }, summary: `Update failed: ${result.error}` };
+  }
+
+  // Return the updated contact for context
+  const { data: contact } = await admin
+    .from("contacts")
+    .select("id, display_name, first_name, last_name, email, phone, company, type, primary_address_formatted, tags, roles")
+    .eq("id", id)
+    .single();
+
+  return {
+    result: { success: true, contact: contact ? { ...contact, link: `/contacts/${id}` } : null },
+    summary: `Updated contact: ${contact?.display_name ?? id}`,
+  };
 }
