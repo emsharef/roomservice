@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ColumnHeader, ActiveFilters, Pagination } from "@/components/TableControls";
 
 interface ContactItem {
@@ -169,6 +169,123 @@ export default function ContactsList({
     ? contactLists?.find((l) => l.id === activeListId)?.name ?? activeListId
     : null;
 
+  // Batch mode state
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showAddToList, setShowAddToList] = useState(false);
+  const [addToListSearch, setAddToListSearch] = useState("");
+  const [addingToListId, setAddingToListId] = useState<string | null>(null);
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+  const [batchMutating, setBatchMutating] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchSuccess, setBatchSuccess] = useState<string | null>(null);
+
+  // Reset selection on URL change (page/filter changes)
+  const searchKey = searchParams.toString();
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setShowAddToList(false);
+    setShowRemoveConfirm(false);
+    setBatchError(null);
+  }, [searchKey]);
+
+  function toggleSelection(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const allOnPageSelected = contacts.length > 0 && contacts.every((c) => selectedIds.has(c.id));
+  const someOnPageSelected = contacts.some((c) => selectedIds.has(c.id));
+
+  function toggleSelectAllOnPage() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) {
+        for (const c of contacts) next.delete(c.id);
+      } else {
+        for (const c of contacts) next.add(c.id);
+      }
+      return next;
+    });
+  }
+
+  function exitBatchMode() {
+    setBatchMode(false);
+    setSelectedIds(new Set());
+    setShowAddToList(false);
+    setShowRemoveConfirm(false);
+    setBatchError(null);
+  }
+
+  async function batchAddToList(listId: string, listName: string) {
+    if (selectedIds.size === 0) return;
+    setAddingToListId(listId);
+    setBatchError(null);
+    setBatchSuccess(null);
+    try {
+      const res = await fetch(`/api/contact-lists/${listId}/contacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact_ids: Array.from(selectedIds) }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setBatchError(data.error || `HTTP ${res.status}`);
+        return;
+      }
+      const count = selectedIds.size;
+      setBatchSuccess(`Added ${count} contact${count === 1 ? "" : "s"} to "${listName}"`);
+      setShowAddToList(false);
+      setAddToListSearch("");
+      setBatchMode(false);
+      setSelectedIds(new Set());
+      router.refresh();
+      setTimeout(() => setBatchSuccess(null), 4000);
+    } catch (e) {
+      setBatchError(String(e));
+    } finally {
+      setAddingToListId(null);
+    }
+  }
+
+  async function batchRemoveFromList() {
+    if (!activeListId || selectedIds.size === 0) return;
+    setBatchMutating(true);
+    setBatchError(null);
+    setBatchSuccess(null);
+    try {
+      const res = await fetch(`/api/contact-lists/${activeListId}/contacts`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact_ids: Array.from(selectedIds) }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setBatchError(data.error || `HTTP ${res.status}`);
+        return;
+      }
+      const count = selectedIds.size;
+      setBatchSuccess(`Removed ${count} contact${count === 1 ? "" : "s"} from "${activeListName}"`);
+      setShowRemoveConfirm(false);
+      setBatchMode(false);
+      setSelectedIds(new Set());
+      router.refresh();
+      setTimeout(() => setBatchSuccess(null), 4000);
+    } catch (e) {
+      setBatchError(String(e));
+    } finally {
+      setBatchMutating(false);
+    }
+  }
+
+  const filteredAddLists = (contactLists ?? []).filter((l) =>
+    addToListSearch.trim() ? l.name.toLowerCase().includes(addToListSearch.toLowerCase()) : true
+  );
+
   const formatLocation = (contact: ContactItem) => {
     const parts = [
       contact.primary_city,
@@ -227,8 +344,136 @@ export default function ContactsList({
           >
             + New list
           </button>
+          {!batchMode && (
+            <button
+              onClick={() => { setBatchMode(true); setBatchError(null); }}
+              className="inline-flex items-center gap-1 text-sm border border-gray-300 text-gray-700 rounded-md px-2 py-1 hover:bg-gray-50 bg-white whitespace-nowrap"
+            >
+              Select
+            </button>
+          )}
         </div>
       </div>
+
+      {batchSuccess && (
+        <div className="mb-4 rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-800">
+          {batchSuccess}
+        </div>
+      )}
+
+      {batchMode && (
+        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-blue-900 font-medium">
+            {selectedIds.size} selected
+            {activeListName && <span className="text-blue-700 font-normal"> &middot; in &ldquo;{activeListName}&rdquo;</span>}
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => { setShowAddToList(true); setAddToListSearch(""); setBatchError(null); }}
+              disabled={selectedIds.size === 0 || batchMutating}
+              className="inline-flex items-center gap-1 text-sm rounded-md bg-blue-600 px-3 py-1 text-white hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
+            >
+              Add to list
+            </button>
+            {activeListId && (
+              <button
+                onClick={() => { setShowRemoveConfirm(true); setBatchError(null); }}
+                disabled={selectedIds.size === 0 || batchMutating}
+                className="inline-flex items-center gap-1 text-sm rounded-md border border-red-300 text-red-700 bg-white px-3 py-1 hover:bg-red-50 disabled:opacity-50 whitespace-nowrap"
+              >
+                Remove from list
+              </button>
+            )}
+            <button
+              onClick={exitBatchMode}
+              disabled={batchMutating}
+              className="inline-flex items-center gap-1 text-sm rounded-md border border-gray-300 bg-white px-3 py-1 text-gray-700 hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {batchError && (
+        <div className="mb-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+          {batchError}
+        </div>
+      )}
+
+      {showAddToList && (
+        <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium text-gray-900">
+              Add {selectedIds.size} contact{selectedIds.size === 1 ? "" : "s"} to a list
+            </h3>
+            <button
+              onClick={() => { setShowAddToList(false); setAddToListSearch(""); }}
+              className="text-gray-400 hover:text-gray-600"
+              aria-label="Close"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <input
+            type="text"
+            value={addToListSearch}
+            onChange={(e) => setAddToListSearch(e.target.value)}
+            placeholder="Search lists…"
+            autoFocus
+            className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-3"
+          />
+          <div className="max-h-72 overflow-y-auto -mx-1">
+            {filteredAddLists.length === 0 ? (
+              <p className="text-sm text-gray-500 italic px-1 py-2">No matching lists</p>
+            ) : (
+              <ul className="divide-y divide-gray-100">
+                {filteredAddLists.map((list) => (
+                  <li key={list.id}>
+                    <button
+                      onClick={() => batchAddToList(list.id, list.name)}
+                      disabled={addingToListId !== null}
+                      className="w-full flex items-center justify-between px-1 py-2 text-left hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      <span className="text-sm text-gray-900">{list.name}</span>
+                      <span className="text-xs text-gray-500">
+                        {addingToListId === list.id ? "Adding…" : `${list.contact_count} contacts`}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showRemoveConfirm && activeListName && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
+          <h3 className="text-sm font-medium text-red-900 mb-1">
+            Remove {selectedIds.size} contact{selectedIds.size === 1 ? "" : "s"} from &ldquo;{activeListName}&rdquo;?
+          </h3>
+          <p className="text-sm text-red-800 mb-3">The contacts will remain in the CRM.</p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={batchRemoveFromList}
+              disabled={batchMutating}
+              className="inline-flex items-center rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              {batchMutating ? "Removing…" : "Remove"}
+            </button>
+            <button
+              onClick={() => setShowRemoveConfirm(false)}
+              disabled={batchMutating}
+              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {showCreateForm && (
         <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
@@ -309,6 +554,20 @@ export default function ContactsList({
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
+              {batchMode && (
+                <th className="px-3 py-2 w-10 text-left">
+                  <input
+                    type="checkbox"
+                    checked={allOnPageSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = !allOnPageSelected && someOnPageSelected;
+                    }}
+                    onChange={toggleSelectAllOnPage}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    aria-label="Select all on page"
+                  />
+                </th>
+              )}
               <ColumnHeader
                 label="Name"
                 column="name"
@@ -363,7 +622,7 @@ export default function ContactsList({
           <tbody className="divide-y divide-gray-200">
             {contacts.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-500">
+                <td colSpan={batchMode ? 6 : 5} className="px-4 py-12 text-center text-sm text-gray-500">
                   No contacts found.
                 </td>
               </tr>
@@ -371,9 +630,27 @@ export default function ContactsList({
             {contacts.map((contact) => (
               <tr
                 key={contact.id}
-                onClick={() => router.push(`/contacts/${contact.id}`)}
-                className="hover:bg-gray-50 cursor-pointer transition-colors"
+                onClick={() => {
+                  if (batchMode) {
+                    toggleSelection(contact.id);
+                  } else {
+                    router.push(`/contacts/${contact.id}`);
+                  }
+                }}
+                className={`hover:bg-gray-50 cursor-pointer transition-colors ${batchMode && selectedIds.has(contact.id) ? "bg-blue-50" : ""}`}
               >
+                {batchMode && (
+                  <td className="px-3 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(contact.id)}
+                      onChange={() => toggleSelection(contact.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      aria-label={`Select ${contact.display_name}`}
+                    />
+                  </td>
+                )}
                 <td className="px-4 py-3">
                   <div className="text-sm font-medium text-gray-900">
                     {contact.display_name}
