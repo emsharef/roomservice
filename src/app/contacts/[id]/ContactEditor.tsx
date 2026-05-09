@@ -45,11 +45,61 @@ const TYPE_OPTIONS = [
   { value: "venue", label: "Venue" },
 ];
 
-export default function ContactEditor({ contact }: { contact: ContactData }) {
+interface ContactList {
+  id: string;
+  name: string;
+  contact_count: number;
+}
+
+export default function ContactEditor({
+  contact,
+  contactLists = [],
+}: {
+  contact: ContactData;
+  contactLists?: ContactList[];
+}) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Add-to-list state
+  const [showListSelector, setShowListSelector] = useState(false);
+  const [listSelectorSearch, setListSelectorSearch] = useState("");
+  const [addingToListId, setAddingToListId] = useState<string | null>(null);
+  const [addToListSuccess, setAddToListSuccess] = useState<string | null>(null);
+  const [addToListError, setAddToListError] = useState<string | null>(null);
+
+  async function addToList(listId: string, listName: string) {
+    setAddingToListId(listId);
+    setAddToListError(null);
+    setAddToListSuccess(null);
+    try {
+      const res = await fetch(`/api/contact-lists/${listId}/contacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact_ids: [contact.id] }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setAddToListError(data.error || `HTTP ${res.status}`);
+        return;
+      }
+      setAddToListSuccess(`Added to "${listName}"`);
+      setShowListSelector(false);
+      setListSelectorSearch("");
+      // Auto-clear success message after a few seconds
+      setTimeout(() => setAddToListSuccess(null), 3000);
+    } catch (e) {
+      setAddToListError(String(e));
+    } finally {
+      setAddingToListId(null);
+    }
+  }
+
+  const filteredLists = listSelectorSearch.trim()
+    ? contactLists.filter((l) => l.name.toLowerCase().includes(listSelectorSearch.toLowerCase()))
+    : contactLists;
 
   // Form state — only used in edit mode
   const [form, setForm] = useState<Record<EditableField, string>>({
@@ -200,18 +250,89 @@ export default function ContactEditor({ contact }: { contact: ContactData }) {
   if (!isEditing) {
     return (
       <>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-2xl font-semibold text-gray-900">{contact.display_name}</h1>
-          <button
-            onClick={startEditing}
-            className="inline-flex items-center gap-1.5 rounded-md bg-white border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-            Edit
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {contactLists.length > 0 && (
+              <button
+                onClick={() => { setShowListSelector(true); setAddToListError(null); setListSelectorSearch(""); }}
+                className="inline-flex items-center gap-1.5 rounded-md bg-white border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add to list
+              </button>
+            )}
+            <button
+              onClick={startEditing}
+              className="inline-flex items-center gap-1.5 rounded-md bg-white border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Edit
+            </button>
+          </div>
         </div>
+
+        {addToListSuccess && (
+          <div className="mb-4 rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-800">
+            {addToListSuccess}
+          </div>
+        )}
+        {addToListError && (
+          <div className="mb-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+            {addToListError}
+          </div>
+        )}
+
+        {showListSelector && (
+          <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-gray-900">Add to a contact list</h3>
+              <button
+                onClick={() => { setShowListSelector(false); setListSelectorSearch(""); }}
+                className="text-gray-400 hover:text-gray-600"
+                aria-label="Close"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <input
+              type="text"
+              value={listSelectorSearch}
+              onChange={(e) => setListSelectorSearch(e.target.value)}
+              placeholder="Search lists…"
+              autoFocus
+              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-3"
+            />
+            <div className="max-h-72 overflow-y-auto -mx-1">
+              {filteredLists.length === 0 ? (
+                <p className="text-sm text-gray-500 italic px-1 py-2">No matching lists</p>
+              ) : (
+                <ul className="divide-y divide-gray-100">
+                  {filteredLists.map((list) => (
+                    <li key={list.id}>
+                      <button
+                        onClick={() => addToList(list.id, list.name)}
+                        disabled={addingToListId !== null}
+                        className="w-full flex items-center justify-between px-1 py-2 text-left hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        <span className="text-sm text-gray-900">{list.name}</span>
+                        <span className="text-xs text-gray-500">
+                          {addingToListId === list.id ? "Adding…" : `${list.contact_count} contacts`}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
 
         <ViewContactInfo contact={contact} />
         <ViewAddress contact={contact} />

@@ -336,6 +336,36 @@ export async function deleteContactList(listId: string): Promise<void> {
   }
 }
 
+export async function addContactsToList(listId: string, contactIds: string[]): Promise<void> {
+  const res = await fetch(`${API_BASE}/contact-lists/${listId}/contacts`, {
+    method: "POST",
+    headers: {
+      "X-API-Key": API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ contact_ids: contactIds }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Arternal API error ${res.status}: ${text}`);
+  }
+}
+
+export async function removeContactsFromList(listId: string, contactIds: string[]): Promise<void> {
+  const res = await fetch(`${API_BASE}/contact-lists/${listId}/contacts`, {
+    method: "DELETE",
+    headers: {
+      "X-API-Key": API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ contact_ids: contactIds }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Arternal API error ${res.status}: ${text}`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Write functions
 // ---------------------------------------------------------------------------

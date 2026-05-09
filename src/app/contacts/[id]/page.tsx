@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import ContactEditor from "./ContactEditor";
+import { fetchContactLists, type ArternalContactList } from "@/lib/arternal";
 
 export default async function ContactDetailPage({
   params,
@@ -26,6 +27,17 @@ export default async function ContactDetailPage({
 
   const { data: contact, error } = contactResult;
   const extended = extendedResult.data;
+
+  // Fetch available contact lists from Arternal (for "Add to list" selector)
+  let contactLists: ArternalContactList[] = [];
+  try {
+    const listsResponse = await fetchContactLists({ limit: "100", sort: "name", order: "asc" });
+    contactLists = listsResponse.data.filter(
+      (list) => !list.live && list.name.toLowerCase() !== "selection cart"
+    );
+  } catch {
+    // If Arternal is down, just show no lists
+  }
 
   if (error || !contact) {
     return (
@@ -83,7 +95,10 @@ export default async function ContactDetailPage({
         Back to contacts
       </Link>
 
-      <ContactEditor contact={editorData} />
+      <ContactEditor
+        contact={editorData}
+        contactLists={contactLists.map((l) => ({ id: l.id, name: l.name, contact_count: l.contact_count }))}
+      />
 
       {/* Recent Transactions */}
       {recentTransactions.length > 0 && (
