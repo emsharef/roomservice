@@ -213,7 +213,7 @@ export const CHAT_TOOLS = [
   {
     name: "delete_contact_list",
     description:
-      "Delete a contact list in Arternal (soft delete). The contacts on the list are NOT deleted, only the list itself. This is destructive — confirm with the user first by name before calling.",
+      "Delete a contact list in Arternal (soft delete). The contacts on the list are NOT deleted, only the list itself. DESTRUCTIVE: you MUST double-check with the user before calling — quote the list name and ID and wait for explicit confirmation in the chat. Do not call this tool on the same turn the user first mentioned deletion; ask, wait for a 'yes', then call.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -242,7 +242,7 @@ export const CHAT_TOOLS = [
   {
     name: "remove_contacts_from_list",
     description:
-      "Remove one or more contacts from a contact list. The contacts themselves remain in the CRM, only their membership in this list is removed. Use list_contact_lists to find the list ID and search_contacts (with list_id filter) to find member IDs.",
+      "Remove one or more contacts from a contact list. The contacts themselves remain in the CRM, only their membership in this list is removed. Use list_contact_lists to find the list ID and search_contacts (with list_id filter) to find member IDs. DESTRUCTIVE: you MUST double-check with the user before calling — state the list name and how many contacts (and which, if a small set) will be removed, and wait for explicit confirmation in the chat. Do not call this tool on the same turn the user first mentioned removal; ask, wait for a 'yes', then call.",
     input_schema: {
       type: "object" as const,
       properties: {
