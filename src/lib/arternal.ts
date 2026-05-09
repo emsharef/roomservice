@@ -163,6 +163,15 @@ export interface ArtistWorksResponse {
   pagination: Pagination;
 }
 
+export interface PrimaryAddress {
+  street: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  country: string | null;
+  formatted: string | null;
+}
+
 export interface ContactItem {
   id: string;
   first_name: string;
@@ -170,11 +179,7 @@ export interface ContactItem {
   email: string | null;
   website: string | null;
   company: string | null;
-  primary_street: string | null;
-  primary_city: string | null;
-  primary_state: string | null;
-  primary_zip: string | null;
-  primary_country: string | null;
+  primary_address?: PrimaryAddress;
   phone: string | null;
   phone_mobile: string | null;
   type: string | null;
@@ -207,11 +212,7 @@ export interface ContactDetail {
   type: string | null;
   website: string | null;
   company: string | null;
-  primary_street: string | null;
-  primary_city: string | null;
-  primary_state: string | null;
-  primary_zip: string | null;
-  primary_country: string | null;
+  primary_address?: PrimaryAddress;
   display_name: string;
   tags: string[];
   notes: string[];
