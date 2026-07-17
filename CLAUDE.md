@@ -279,6 +279,7 @@ SUPABASE_SECRET_KEY       # Service role key (server-side only)
 SUPABASE_DB_URL           # PostgreSQL connection string (for psql)
 VOYAGE_API_KEY            # Voyage AI multimodal embeddings
 ANTHROPIC_API_KEY         # Claude Vision & enrichment
+MOSHI_WEBHOOK_TOKEN       # Moshi push notification token (per-device — do NOT commit or share)
 ```
 
 ## Key Decisions & Terminology
@@ -294,11 +295,11 @@ ANTHROPIC_API_KEY         # Claude Vision & enrichment
 
 ## Push Notifications
 
-For long-running operations, use the Moshi webhook:
+For long-running operations, use the Moshi webhook. The token lives in `.env.local` as `MOSHI_WEBHOOK_TOKEN` — never hardcode it in code, docs, or commits (it addresses a specific person's phone):
 ```bash
 curl -X POST https://api.getmoshi.app/api/webhook \
   -H "Content-Type: application/json" \
-  -d '{"token": "6vFtVgUWzKlv2T2Rf9xj7lDHdCJmuv27", "title": "Done", "message": "Brief summary"}'
+  -d "{\"token\": \"$(grep '^MOSHI_WEBHOOK_TOKEN=' .env.local | cut -d= -f2)\", \"title\": \"Done\", \"message\": \"Brief summary\"}"
 ```
 
 ## Trigger.dev (Background Jobs)

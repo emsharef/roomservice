@@ -25,11 +25,12 @@ async function main() {
   }
 
   try {
+    if (!process.env.MOSHI_WEBHOOK_TOKEN) return;
     await fetch("https://api.getmoshi.app/api/webhook", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        token: "6vFtVgUWzKlv2T2Rf9xj7lDHdCJmuv27",
+        token: process.env.MOSHI_WEBHOOK_TOKEN,
         title: "Contacts Detail Sync Done",
         message: `${result.processed} processed, ${result.errors.length} errors`,
       }),
